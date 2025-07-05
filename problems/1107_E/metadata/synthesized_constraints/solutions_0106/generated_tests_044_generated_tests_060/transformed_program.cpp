@@ -1,0 +1,124 @@
+#include <bits/stdc++.h>
+using namespace std;
+using ll = long long;
+const ll inf = 1e15;
+const int maxn = 110;
+bool vis[2][maxn][maxn][maxn];
+ll memo[2][maxn][maxn][maxn];
+bool vis2[maxn][maxn];
+ll memo2[maxn][maxn];
+int a[maxn];
+string s;
+
+// Checker function for input composition
+void check_input_composition(const string& s) {
+    int max_segment_length = 0;
+    char last_char = s[0];
+    int current_length = 1;
+    
+    for (size_t i = 1; i < s.size(); ++i) {
+        if (s[i] == last_char) {
+            ++current_length;
+        } else {
+            max_segment_length = max(max_segment_length, current_length);
+            current_length = 1;
+            last_char = s[i];
+        }
+    }
+    max_segment_length = max(max_segment_length, current_length);
+    
+    if (max_segment_length > 10) {  // Assuming a threshold based on problem constraints
+        cerr << "Warning: Performance bottleneck condition triggered - long segment of identical characters!" << endl;
+        abort();
+    }
+}
+
+// Checker function for recursion depth and branching
+void check_recursion_depth_branching(int current_depth, int max_possible_depth, int branching_factor, int threshold_depth = 50, int threshold_branching = 10) {
+    if (current_depth > threshold_depth || branching_factor > threshold_branching) {
+        cerr << "Warning: Performance bottleneck condition triggered - excessive recursion depth or branching!" << endl;
+        abort();
+    }
+}
+
+// Checker function for points array configuration
+void check_points_configuration(const vector<int>& a) {
+    int high_value_count = 0;
+    for (int points : a) {
+        if (points > 100000000) {  // Arbitrarily chosen high value for threshold
+            ++high_value_count;
+        }
+    }
+    if (high_value_count > 5) {  // Assuming more than 5 high values in `a` can cause issues
+        cerr << "Warning: Performance bottleneck condition triggered - points array configuration!" << endl;
+        abort();
+    }
+}
+
+ll calc_2(int, int);
+ll calc(bool c, int l, int r, int cnt) {
+    if (cnt == 0) return calc_2(l, r);
+    if (vis[c][l][r][cnt]) return memo[c][l][r][cnt];
+    ll& ans = memo[c][l][r][cnt] = -inf;
+    for (int i = l; i <= r; ++i) {
+        if (s[i] == '0' + c) {
+            ans = max(ans, calc_2(l, i - 1) + calc(c, i + 1, r, cnt - 1));
+        }
+    }
+    vis[c][l][r][cnt] = 1;
+    return ans;
+}
+ll calc_2(int l, int r) {
+    if (l > r) return 0;
+    if (vis2[l][r]) return memo2[l][r];
+    ll& ans = memo2[l][r] = -inf;
+    for (int i = 1; i <= r - l + 1; ++i) {
+        for (int d = 0; d < 2; ++d) {
+            ans = max(ans, a[i] + calc(d, l, r, i));
+        }
+    }
+    vis2[l][r] = 1;
+    return ans;
+}
+
+class Solver {
+public:
+    void solveOne(istream& in, ostream& out) {
+        int n;
+        in >> n;
+        in >> s;
+        for (int i = 1; i <= n; ++i) in >> a[i];
+
+        // Insert checkers
+        check_input_composition(s); // Check for long segments of identical characters
+        check_points_configuration(vector<int>(a + 1, a + n + 1)); // Check for problematic points configuration
+
+        out << calc_2(0, n - 1) << '\n';
+    }
+    
+    void solve(istream& in, ostream& out) {
+        out.precision(10);
+        out << fixed;
+        int testNumber = 1;
+        for (int tc = 0; tc < testNumber; ++tc) {
+            solveOne(in, out);
+        }
+    }
+};
+
+int main() {
+    Solver solver;
+    string file = "";
+    if (!file.empty()) {
+        ifstream in(file + ".in");
+        ofstream out(file + ".out");
+        in.tie(nullptr);
+        in.exceptions(in.failbit);
+        solver.solve(in, out);
+    } else {
+        ios_base::sync_with_stdio(false);
+        cin.tie(nullptr);
+        solver.solve(cin, cout);
+    }
+    return 0;
+}

@@ -1,0 +1,172 @@
+=== Invariants Response ===
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+Based on the provided hit counts, we can observe significant differences in the slow vs. fast inputs:
+
+1. **Function `fp` (lines 8-10):** 
+   - This line has a hit count of 6,000,000 for the slow input and only 60,000 for the fast input. 
+   - The function `fp` is used to compute modular inverses via exponentiation by squaring, which gets called repeatedly in the `pre` function.
+
+2. **Lines 14-15 in `pre`:**
+   - The loop in `pre` (lines 14-15) is executed 200,001 times for the slow input versus 2,001 times for the fast input, indicating a direct correlation with the size of `n + m`.
+
+### Phase 2: Derive Performance-characterizing Invariants
+
+Based on the identified bottlenecks, the following performance-characterizing invariants can be derived:
+
+1. **High Complexity in Precomputation:**
+   - **Invariant:** "When the sum of dimensions \( h + w \) of the board is large, the precomputation step involves many calls to compute modular inverses, which can significantly slow down the program."
+   - **Reasoning:** The hit count in the `fp` function and loops in `pre` scales with \( n + m \), leading to more computations for larger board dimensions up to the constraint limit.
+
+2. **Potential Inefficiency with Large Boards:**
+   - **Invariant:** "If the board dimensions \( h \) and \( w \) are near their maximum, the iterative process to calculate paths can involve extensive operations and hit a performance bottleneck."
+   - **Reasoning:** The slow input values exploit the maximum board size allowed, leading to extensive calculations during path enumeration.
+
+3. **Numerous Path Combinations with Limited Black Cells:**
+   - **Invariant:** "In cases where the board is large but the number of black cells \( n \) is relatively small, performance may degrade due to the vast number of paths needing enumeration."
+   - **Reasoning:** With few black cells to block paths, there are many potential paths to consider, increasing computation needlessly.
+
+4. **Costly Path Enumeration:**
+   - **Invariant:** "The path enumeration complexity increases with the number of cells and the configuration of obstacles, especially when obstacles are clustered near central areas of large boards."
+   - **Reasoning:** The arrangement of black cells in the slow input may lead to more recursive checks and operations, as they block paths in a non-linear, complex fashion.
+
+These invariants help identify conditions under which the program is likely to slow down, focusing on large board dimensions, path complexities, and inefficient operations. They abstract the potential triggers to ensure they cover a range of possible scenarios within the problem's constraints.
+
+=== Checker Response ===
+### Phase 3: Implement the Natural Language Invariants in C++
+
+Here are the C++ code snippets implementing the performance-characterizing invariants derived from the problem:
+
+```cpp
+// Check if the board dimensions are large, which could lead to performance issues in precomputations
+void check_large_board_dimensions(int h, int w) {
+    if (h + w > 150000) { // chosen threshold based on constraints
+        cerr << "Warning: Performance bottleneck due to large board dimensions!" << endl;
+        abort();
+    }
+}
+
+// Check if there are too many paths to consider when there are few black cells
+void check_few_black_cells(int h, int w, int n) {
+    int potentialPaths = (h - 1) + (w - 1);
+    if (n < 5 && potentialPaths > 150000) { // arbitrary threshold for few black cells with large paths
+        cerr << "Warning: Potentially too many paths due to few black cells and large board!" << endl;
+        abort();
+    }
+}
+
+// Check for expensive path enumeration in specific arrangements
+void check_complex_obstacle_arrangement(int h, int w, int n, int* blackCellRows, int* blackCellCols) {
+    // An arbitrary check for a clustered arrangement in the center of a large board
+    if (h * w > 5000000 && n < 20) {
+        for (int i = 0; i < n; ++i) {
+            if (blackCellRows[i] > h / 3 && blackCellRows[i] < 2 * h / 3 &&
+                blackCellCols[i] > w / 3 && blackCellCols[i] < 2 * w / 3) {
+                cerr << "Warning: Performance issue due to central clustered obstacles on large board!" << endl;
+                abort();
+            }
+        }
+    }
+}
+```
+
+### Phase 4: Integrate Checks into the Original Program
+
+Now, we will integrate these checks into the original C++ code at strategic points:
+
+```cpp
+#include <bits/stdc++.h>
+
+struct node {
+    int x, y;
+};
+long long fac[200005], inv[200005], ans[2005];
+int n, m, k;
+node f[2005];
+
+long long fp(long long x, int y) {
+    return (y % 2 ? x : 1ll) * (y / 2 ? fp(x * x % 1000000007, y / 2) : 1ll) %
+           1000000007;
+}
+
+void pre(int n) {
+    fac[0] = inv[0] = 1;
+    for (int i = 1; i <= n; i++) fac[i] = fac[i - 1] * i % 1000000007;
+    for (int i = 1; i <= n; i++) inv[i] = fp(fac[i], 1000000007 - 2);
+}
+
+long long c(int x, int y) {
+    return fac[x] * inv[y] % 1000000007 * inv[x - y] % 1000000007;
+}
+
+int cmp(node x, node y) { return x.x != y.x ? x.x < y.x : x.y < y.y; }
+
+// Adding checker functions
+
+void check_large_board_dimensions(int h, int w) {
+    if (h + w > 150000) {
+        cerr << "Warning: Performance bottleneck due to large board dimensions!" << endl;
+        abort();
+    }
+}
+
+void check_few_black_cells(int h, int w, int n) {
+    int potentialPaths = (h - 1) + (w - 1);
+    if (n < 5 && potentialPaths > 150000) {
+        cerr << "Warning: Potentially too many paths due to few black cells and large board!" << endl;
+        abort();
+    }
+}
+
+void check_complex_obstacle_arrangement(int h, int w, int n, node* f) {
+    if (h * w > 5000000 && n < 20) {
+        for (int i = 1; i <= n; ++i) {
+            if (f[i].x > h / 3 && f[i].x < 2 * h / 3 &&
+                f[i].y > w / 3 && f[i].y < 2 * w / 3) {
+                cerr << "Warning: Performance issue due to central clustered obstacles on large board!" << endl;
+                abort();
+            }
+        }
+    }
+}
+
+int main() {
+    scanf("%d%d%d", &n, &m, &k);
+    
+    // Insert check for large board dimensions
+    check_large_board_dimensions(n, m);
+
+    pre(n + m);
+    for (int i = 1; i <= k; i++) scanf("%d%d", &f[i].x, &f[i].y);
+    f[++k] = node{n, m};
+    std::sort(f + 1, f + k + 1, cmp);
+
+    // Insert check for few black cells
+    check_few_black_cells(n, m, k);
+
+    // Insert check for complex obstacle arrangement
+    check_complex_obstacle_arrangement(n, m, k, f);
+
+    for (int i = 1; i <= k; i++) {
+        long long s = c(f[i].x + f[i].y - 2, f[i].x - 1);
+        for (int j = 1; j <= i - 1; j++)
+            if (f[j].x <= f[i].x && f[j].y <= f[i].y)
+                s = (s -
+                     ans[j] * c(f[i].x + f[i].y - f[j].x - f[j].y, f[i].x - f[j].x) %
+                         1000000007 +
+                     1000000007) %
+                    1000000007;
+        ans[i] = s;
+    }
+    printf("%lld\n", ans[k]);
+    return 0;
+}
+```
+
+### Explanation
+
+- **Check for large board dimensions** is placed right after reading input, to catch potential performance bottlenecks early.
+- **Check for few black cells** is added after sorting the black cells, ensuring paths are considered before aborting.
+- **Check for complex obstacle arrangement** is positioned after black cell setup, targeting specific challenging configurations. 
+
+These checks are inserted at strategic points to detect likely performance bottlenecks without adversely affecting runtime in tight loops.

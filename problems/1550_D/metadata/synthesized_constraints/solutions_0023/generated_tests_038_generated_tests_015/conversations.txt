@@ -1,0 +1,979 @@
+system: You are a helpful assistant good at coding.
+
+user: (A) Context
+
+You are an experienced C software engineer focusing on performance bottlenecks. You have:
+1. A problem statement describing a task or algorithm (with constraints such as n <= 100).
+2. A C program that implements a solution to that problem.
+3. Two inputs: a “fast” input that completes quickly, and a “slow” input that takes much longer—both inputs have similar size/structure.
+4. Line-level hit counts for both runs, showing which lines get hit significantly more often on the slow input.
+
+Your goal is to diagnose why the program runs slowly for the slow input and derive conditions or invariants that capture what triggers this slowdown.
+
+(B) Tasks: Analyze the given code and generate performance-characterizing invariants in natural language
+
+Phase 1: Identify expensive or onefficient code segments. In this phase you are asked to,
+1. Compare line-level hit counts between the fast and slow runs.
+2. Pinpoint lines or functions that get significantly more hits under the slow input.
+3. Infer how these lines might be interacting with data structures, loops, recursion, etc., especially as they relate to the input constraints (e.g., n <= 100).
+
+Phase 2: Derive performance-characterizing invariants (natural language). In this phase you are asked to,
+1. Generate natural language statements that describe conditions under which the program likely enters a slow path.
+2. Avoid using specific numeric values from the slow input; abstract them into categories or thresholds. However, make sure those thresholds adhere to the input constraints of the problem.
+3. Correlate these conditions strongly to input patterns (e.g., “when n is close to 100 and there is a nested loop,” or “when a data structure is repeatedly sorted”).
+4. Ensure your statements are broad enough to catch possible future slow scenarios, but still reflect realistic triggers given the constraints (like n <= 100).
+
+Note that not all performance-characterizing invariants are about maximising input size. You may refer to the following examples for inspiration --- some maximising the input size, some not --- but do not simply replicate them exactly. Rather, use them as inspiration to infer and tailor performance-characterizing invariants tailored for the C code and problem statement you were asked to analize:
+
+Example Invariant #1:
+
+A potential slowdown arises when certain arrays or lists grow large, causing repeated operations. One way to detect this is to check if the size of a critical array arr (used in a nested loop) exceeds a broad threshold.
+
+Natural language description: “If arr is very large and used in nested loops, the code may repeat operations too many times.”
+
+Code implementing the natural language description:
+
+```cpp
+// Sample checker function
+void check_size_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: size_invariant triggered - array too large for nested loops" << endl;
+        abort();
+    }
+}
+
+// Usage in main or function
+int arrSize = arr.size();
+check_size_invariant(arrSize > 50000);
+```
+
+Example Invariant #2:
+
+Repeated sorting or searching on a data structure can degrade performance, especially if the data structure is large or if the sorting is called multiple times in a loop.
+
+Natural language description: “If a large portion of the code’s execution time is spent in sorting a data structure repeatedly, performance may degrade. Check if the data structure is frequently resorted or reprocessed when it has many elements.”
+
+Code implementing the natural language description:
+
+```cpp
+void check_sort_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: sort_invariant triggered - repeatedly sorting large data" << endl;
+        abort();
+    }
+}
+
+// After reading input or before sorting
+int elementCount = someDataStructure.size();
+check_sort_invariant(elementCount > 100000 && /* some condition indicating repeated sorts */);
+```
+
+Example Invariant #3:
+
+Recursion (e.g., graph traversal or the iterative version of it, recurssive dynamic programming, recurssive computation like computing the next Fibonacci number, etc.) can become expensive if it explores a large search space. A sign of this might be a high branching factor combined with a deep recursion depth.
+
+Natural language description: “If the recursion depth is likely to exceed a certain level or if many branches are processed at each recursive call, the computation may become very expensive.”
+
+```cpp
+void check_dfs_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: dfs_invariant triggered - high recursion depth or branching factor" << endl;
+        abort();
+    }
+}
+
+// Before calling dfs or inside setup
+check_dfs_invariant((maxDepthEstimate > 50) && (branchFactorEstimate > 10));
+```
+
+Example Invariant #4:
+
+Memory usage spikes or large matrix operations can slow down computation if array dimensions become too large. If the program initializes a 2D array based on input dimensions n and m, certain input combinations can trigger large memory footprints or nested loops over the entire matrix.
+
+Natural language description: “If n and m together exceed a threshold that implies large matrix computations, the program may slow significantly.”
+
+```cpp
+void check_matrix_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: matrix_invariant triggered - potentially large matrix operations" << endl;
+        abort();
+    }
+}
+
+// After reading n, m
+check_matrix_invariant(n * m > 1000000);
+```
+
+Example invariant #5:
+
+If a program runs an expensive function or heavy-weight code (e.g. memory allocation) repeatedly within a performance-critical loop or function, the overhead for calling that function can accumulate, slowing the program significantly.
+
+Natural langauge description: "If function foo is an expensive function to execute, and is called a large number of times in a loop or recursive function, the program may slow down significantly"
+
+```cpp
+void check_expensive_function_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: expensive function invariant triggered - excessive calls" << endl;
+        abort();
+    }
+}
+
+check_expensive_function_invariant(n > 1000000);  // arbitrary, but large threshold
+for (i = 0; i < n; ++i) { 
+    foo(); // expensive function
+}
+```
+
+(C) Output Requirements
+1. Provide a list of natural language performance invariants explaining under what conditions the code slows down.
+2. Do not mention or rely on exact values from the provided slow input.
+3. Use or suggest threshold values that align with problem constraints (e.g., n <= 100).
+4. The output should be a concise, descriptive set of statements about performance triggers.
+
+(D) Important Considerations
+1. Avoid hardcoding. Don’t rely solely on the exact values from the provided slow input; think in terms of categories or thresholds that lead to slow execution.
+2. Avoid checks inside tight loops. Place checks in a way that does not significantly degrade performance.
+3. Focus on fuzzer utility. The checks should help a fuzzer detect slow performance triggers by hitting these conditions.
+
+(E) Problem Statement
+
+Let's call an integer array a_1, a_2, ..., a_n good if a_i ≠ i for each i.
+
+Let F(a) be the number of pairs (i, j) (1 ≤ i < j ≤ n) such that a_i + a_j = i + j.
+
+Let's say that an array a_1, a_2, ..., a_n is excellent if: 
+
+  * a is good; 
+  * l ≤ a_i ≤ r for each i; 
+  * F(a) is the maximum possible among all good arrays of size n. 
+
+
+
+Given n, l and r, calculate the number of excellent arrays modulo 10^9 + 7.
+
+Input
+
+The first line contains a single integer t (1 ≤ t ≤ 1000) — the number of test cases. 
+
+The first and only line of each test case contains three integers n, l, and r (2 ≤ n ≤ 2 ⋅ 10^5; -10^9 ≤ l ≤ 1; n ≤ r ≤ 10^9).
+
+It's guaranteed that the sum of n doesn't exceed 2 ⋅ 10^5.
+
+Output
+
+For each test case, print the number of excellent arrays modulo 10^9 + 7.
+
+Example
+
+Input
+
+
+4
+3 0 3
+4 -3 5
+42 -33 55
+69 -42 146
+
+
+Output
+
+
+4
+10
+143922563
+698570404
+
+Note
+
+In the first test case, it can be proven that the maximum F(a) among all good arrays a is equal to 2. The excellent arrays are: 
+
+  1. [2, 1, 2]; 
+  2. [0, 3, 2]; 
+  3. [2, 3, 2]; 
+  4. [3, 0, 1]. 
+
+(F) Program Solving the Problem Statement
+
+#pragma GCC target("avx")
+#pragma GCC optimize("O3")
+#pragma GCC optimize("unroll-loops")
+#include<bits/stdc++.h>
+// #include<ext/pb_ds/assoc_container.hpp>
+// #include<ext/pb_ds/tree_policy.hpp>
+// #include<ext/pb_ds/tag_and_trait.hpp>
+// using namespace __gnu_pbds;
+// #include<boost/multiprecision/cpp_int.hpp>
+// namespace multiprecisioninteger = boost::multiprecision;
+// using cint=multiprecisioninteger::cpp_int;
+using namespace std;
+using ll=long long;
+using datas=pair<ll,ll>;
+using ddatas=pair<long double,long double>;
+using tdata=pair<ll,datas>;
+using vec=vector<ll>;
+using mat=vector<vec>;
+using pvec=vector<datas>;
+using pmat=vector<pvec>;
+// using llset=tree<ll,null_type,less<ll>,rb_tree_tag,tree_order_statistics_node_update>;
+#define For(i,a,b) for(i=a;i<(ll)b;++i)
+#define bFor(i,b,a) for(i=b,--i;i>=(ll)a;--i)
+#define rep(i,N) For(i,0,N)
+#define rep1(i,N) For(i,1,N)
+#define brep(i,N) bFor(i,N,0)
+#define brep1(i,N) bFor(i,N,1)
+#define all(v) (v).begin(),(v).end()
+#define allr(v) (v).rbegin(),(v).rend()
+#define vsort(v) sort(all(v))
+#define vrsort(v) sort(allr(v))
+#define uniq(v) vsort(v);(v).erase(unique(all(v)),(v).end())
+#define endl "\n"
+#define popcount __builtin_popcountll
+#define eb emplace_back
+#define print(x) cout<<x<<endl
+#define printyes print("Yes")
+#define printno print("No")
+#define printYES print("YES")
+#define printNO print("NO")
+#define output(v) do{bool f=0;for(auto outi:v){cout<<(f?" ":"")<<outi;f=1;}cout<<endl;}while(0)
+#define matoutput(v) do{for(auto outimat:v)output(outimat);}while(0)
+constexpr ll mod=1000000007;
+// constexpr ll mod=998244353;
+constexpr ll inf=1LL<<60;
+constexpr long double eps=1e-9;
+const long double PI=acosl(-1);
+template<class T,class E> ostream& operator<<(ostream& os,const pair<T,E>& p){return os<<"("<<p.first<<","<<p.second<<")";}
+template<class T> ostream& operator<<(ostream& os,const vector<T>& v){
+  os<<"{";bool f=false;
+  for(auto& x:v){if(f)os<<",";os<<x;f=true;}
+  os<<"}";
+  return os;
+}
+template<class T> ostream& operator<<(ostream& os,const set<T>& v){
+  os<<"{";bool f=false;
+  for(auto& x:v){if(f)os<<",";os<<x;f=true;}
+  os<<"}";
+  return os;
+}
+template<class T> ostream& operator<<(ostream& os,const multiset<T>& v){
+  os<<"{";bool f=false;
+  for(auto& x:v){if(f)os<<",";os<<x;f=true;}
+  os<<"}";
+  return os;
+}
+template<class T,class E> ostream& operator<<(ostream& os,const map<T,E>& v){
+  os<<"{";bool f=false;
+  for(auto& x:v){if(f)os<<",";os<<x;f=true;}
+  os<<"}";
+  return os;
+}
+template<class T> inline bool chmax(T& a,const T b){bool x=a<b;if(x)a=b;return x;}
+template<class T> inline bool chmin(T& a,const T b){bool x=a>b;if(x)a=b;return x;}
+#ifdef DEBUG
+void debugg(){cout<<endl;}
+template<class T,class... Args>void debugg(const T& x,const Args&... args){cout<<" "<<x;debugg(args...);}
+#define debug(...) cout<<__LINE__<<" ["<<#__VA_ARGS__<<"]:",debugg(__VA_ARGS__)
+#else
+#define debug(...) (void(0))
+#endif
+
+inline void startupcpp(void) noexcept{
+  cin.tie(0);
+  ios::sync_with_stdio(false);
+  cout<<fixed<<setprecision(15);
+}
+
+ll modinv(ll a,const ll m=mod) noexcept{
+  ll b=m,u=1,v=0,t;
+  while(b){
+    t=a/b;
+    a-=t*b; swap(a,b);
+    u-=t*v; swap(u,v);
+  }
+  return (u+m)%m;
+}
+
+ll moddevide(const ll a,const ll b) noexcept{return (a*modinv(b))%mod;}
+
+vec modncrlistp,modncrlistm;
+
+ll modncr(const ll n,const ll r) noexcept{
+  if(n<r||r<0)return 0;
+  ll i,size=modncrlistp.size();
+  if(size<=n){
+    modncrlistp.resize(n+1);
+    modncrlistm.resize(n+1);
+    if(!size){
+      modncrlistp[0]=modncrlistm[0]=1;
+      size++;
+    }
+    For(i,size,n+1)modncrlistp[i]=modncrlistp[i-1]*i%mod;
+    modncrlistm[n]=modinv(modncrlistp[n]);
+    for(i=n;i>size;--i)modncrlistm[i-1]=modncrlistm[i]*i%mod;
+  }
+  return modncrlistp[n]*modncrlistm[r]%mod*modncrlistm[n-r]%mod;
+}
+
+ll modpow(ll a,ll n,const ll m=mod){
+  if(n<0)return 0;
+  ll res=1;
+  while(n>0){
+    if(n&1)res=res*a%m;
+    a=a*a%m;
+    n>>=1;
+  }
+  return res;
+}
+
+constexpr ll gcd(const ll a,const ll b) noexcept{return (!b)?abs(a):(a%b==0)?abs(b):gcd(b,a%b);}
+constexpr ll lcm(const ll a,const ll b) noexcept{return a/gcd(a,b)*b;}
+
+ll N,M,K,H,W,A,B,C,D;
+string s,t;
+ll ans;
+int main(){
+  startupcpp();
+int codeforces;cin>>codeforces;while(codeforces--){
+  ll i;
+  cin>>N>>A>>B;
+  ans=min(B-N-1,-A)*modncr(N,N/2);
+  if(ans<0)ans=0;
+  if(N&1)ans+=ans;
+  ans%=mod;
+  set<ll> se;
+  rep(i,N)se.emplace(-(A-i-1));
+  rep(i,N)se.emplace(B-i-1);
+  if(*se.begin()==0)se.erase(se.begin());
+  debug(ans,se);
+  for(auto i:se){
+    //+候補はb箇所,-候補はa箇所
+    ll a=min(-i-A+N+1,N),b=min(B-i,N);
+    if(a<=0||b<=0||a+b<N)continue;
+    //+確定はc箇所,-確定はd箇所
+    ll c=min(b,N-a),d=min(a,N-b);
+    //どちらでもよいのがm箇所
+    ll m=N-c-d;
+    if(m<0)continue;
+    // debug(a,b,c,d,m);
+    ans+=modncr(m,N/2-c);
+    if(N&1)ans+=modncr(m,N/2+1-c);
+  }
+  print(ans%mod);
+}
+}
+
+(G) The Slow & Fast Inputs
+
+(G.1) Slow Input
+
+10
+34651 -93862270 597469643
+36062 -13928452 414987414
+20000 -472808872 367983694
+20000 -84913058 517394906
+20000 -949029500 8329318
+20000 -720971736 526102810
+20000 -416160739 748291750
+20000 -665939649 743938438
+20000 -80741314 634025883
+20000 -824743396 43172618
+
+
+(G.2) Fast Input
+
+10
+20000 -93862270 597469643
+20000 -13928452 414987414
+20000 -472808872 367983694
+20000 -84913058 517394906
+20000 -949029500 8329318
+20000 -720971736 526102810
+20000 -416160739 748291750
+20000 -665939649 743938438
+20000 -80741314 634025883
+20000 -824743396 43172618
+
+
+(H) Hit Count Information of Slow Input and Fast Input (Aggregated):
+
+#pragma GCC target("avx") /* line 1 slow_hit_count: 0, fast_hit_count: 0 */
+#pragma GCC optimize("O3") /* line 2 slow_hit_count: 0, fast_hit_count: 0 */
+#pragma GCC optimize("unroll-loops") /* line 3 slow_hit_count: 0, fast_hit_count: 0 */
+#include<bits/stdc++.h> /* line 4 slow_hit_count: 0, fast_hit_count: 0 */
+// #include<ext/pb_ds/assoc_container.hpp> /* line 5 slow_hit_count: 0, fast_hit_count: 0 */
+// #include<ext/pb_ds/tree_policy.hpp> /* line 6 slow_hit_count: 0, fast_hit_count: 0 */
+// #include<ext/pb_ds/tag_and_trait.hpp> /* line 7 slow_hit_count: 0, fast_hit_count: 0 */
+// using namespace __gnu_pbds; /* line 8 slow_hit_count: 0, fast_hit_count: 0 */
+// #include<boost/multiprecision/cpp_int.hpp> /* line 9 slow_hit_count: 0, fast_hit_count: 0 */
+// namespace multiprecisioninteger = boost::multiprecision; /* line 10 slow_hit_count: 0, fast_hit_count: 0 */
+// using cint=multiprecisioninteger::cpp_int; /* line 11 slow_hit_count: 0, fast_hit_count: 0 */
+using namespace std; /* line 12 slow_hit_count: 0, fast_hit_count: 0 */
+using ll=long long; /* line 13 slow_hit_count: 0, fast_hit_count: 0 */
+using datas=pair<ll,ll>; /* line 14 slow_hit_count: 0, fast_hit_count: 0 */
+using ddatas=pair<long double,long double>; /* line 15 slow_hit_count: 0, fast_hit_count: 0 */
+using tdata=pair<ll,datas>; /* line 16 slow_hit_count: 0, fast_hit_count: 0 */
+using vec=vector<ll>; /* line 17 slow_hit_count: 0, fast_hit_count: 0 */
+using mat=vector<vec>; /* line 18 slow_hit_count: 0, fast_hit_count: 0 */
+using pvec=vector<datas>; /* line 19 slow_hit_count: 0, fast_hit_count: 0 */
+using pmat=vector<pvec>; /* line 20 slow_hit_count: 0, fast_hit_count: 0 */
+// using llset=tree<ll,null_type,less<ll>,rb_tree_tag,tree_order_statistics_node_update>; /* line 21 slow_hit_count: 0, fast_hit_count: 0 */
+#define For(i,a,b) for(i=a;i<(ll)b;++i) /* line 22 slow_hit_count: 0, fast_hit_count: 0 */
+#define bFor(i,b,a) for(i=b,--i;i>=(ll)a;--i) /* line 23 slow_hit_count: 0, fast_hit_count: 0 */
+#define rep(i,N) For(i,0,N) /* line 24 slow_hit_count: 0, fast_hit_count: 0 */
+#define rep1(i,N) For(i,1,N) /* line 25 slow_hit_count: 0, fast_hit_count: 0 */
+#define brep(i,N) bFor(i,N,0) /* line 26 slow_hit_count: 0, fast_hit_count: 0 */
+#define brep1(i,N) bFor(i,N,1) /* line 27 slow_hit_count: 0, fast_hit_count: 0 */
+#define all(v) (v).begin(),(v).end() /* line 28 slow_hit_count: 0, fast_hit_count: 0 */
+#define allr(v) (v).rbegin(),(v).rend() /* line 29 slow_hit_count: 0, fast_hit_count: 0 */
+#define vsort(v) sort(all(v)) /* line 30 slow_hit_count: 0, fast_hit_count: 0 */
+#define vrsort(v) sort(allr(v)) /* line 31 slow_hit_count: 0, fast_hit_count: 0 */
+#define uniq(v) vsort(v);(v).erase(unique(all(v)),(v).end()) /* line 32 slow_hit_count: 0, fast_hit_count: 0 */
+#define endl "\n" /* line 33 slow_hit_count: 0, fast_hit_count: 0 */
+#define popcount __builtin_popcountll /* line 34 slow_hit_count: 0, fast_hit_count: 0 */
+#define eb emplace_back /* line 35 slow_hit_count: 0, fast_hit_count: 0 */
+#define print(x) cout<<x<<endl /* line 36 slow_hit_count: 0, fast_hit_count: 0 */
+#define printyes print("Yes") /* line 37 slow_hit_count: 0, fast_hit_count: 0 */
+#define printno print("No") /* line 38 slow_hit_count: 0, fast_hit_count: 0 */
+#define printYES print("YES") /* line 39 slow_hit_count: 0, fast_hit_count: 0 */
+#define printNO print("NO") /* line 40 slow_hit_count: 0, fast_hit_count: 0 */
+#define output(v) do{bool f=0;for(auto outi:v){cout<<(f?" ":"")<<outi;f=1;}cout<<endl;}while(0) /* line 41 slow_hit_count: 0, fast_hit_count: 0 */
+#define matoutput(v) do{for(auto outimat:v)output(outimat);}while(0) /* line 42 slow_hit_count: 0, fast_hit_count: 0 */
+constexpr ll mod=1000000007; /* line 43 slow_hit_count: 0, fast_hit_count: 0 */
+// constexpr ll mod=998244353; /* line 44 slow_hit_count: 0, fast_hit_count: 0 */
+constexpr ll inf=1LL<<60; /* line 45 slow_hit_count: 0, fast_hit_count: 0 */
+constexpr long double eps=1e-9; /* line 46 slow_hit_count: 0, fast_hit_count: 0 */
+const long double PI=acosl(-1); /* line 47 slow_hit_count: 0, fast_hit_count: 0 */
+template<class T,class E> ostream& operator<<(ostream& os,const pair<T,E>& p){return os<<"("<<p.first<<","<<p.second<<")";} /* line 48 slow_hit_count: 0, fast_hit_count: 0 */
+template<class T> ostream& operator<<(ostream& os,const vector<T>& v){ /* line 49 slow_hit_count: 0, fast_hit_count: 0 */
+  os<<"{";bool f=false; /* line 50 slow_hit_count: 0, fast_hit_count: 0 */
+  for(auto& x:v){if(f)os<<",";os<<x;f=true;} /* line 51 slow_hit_count: 0, fast_hit_count: 0 */
+  os<<"}"; /* line 52 slow_hit_count: 0, fast_hit_count: 0 */
+  return os; /* line 53 slow_hit_count: 0, fast_hit_count: 0 */
+} /* line 54 slow_hit_count: 0, fast_hit_count: 0 */
+template<class T> ostream& operator<<(ostream& os,const set<T>& v){ /* line 55 slow_hit_count: 0, fast_hit_count: 0 */
+  os<<"{";bool f=false; /* line 56 slow_hit_count: 0, fast_hit_count: 0 */
+  for(auto& x:v){if(f)os<<",";os<<x;f=true;} /* line 57 slow_hit_count: 0, fast_hit_count: 0 */
+  os<<"}"; /* line 58 slow_hit_count: 0, fast_hit_count: 0 */
+  return os; /* line 59 slow_hit_count: 0, fast_hit_count: 0 */
+} /* line 60 slow_hit_count: 0, fast_hit_count: 0 */
+template<class T> ostream& operator<<(ostream& os,const multiset<T>& v){ /* line 61 slow_hit_count: 0, fast_hit_count: 0 */
+  os<<"{";bool f=false; /* line 62 slow_hit_count: 0, fast_hit_count: 0 */
+  for(auto& x:v){if(f)os<<",";os<<x;f=true;} /* line 63 slow_hit_count: 0, fast_hit_count: 0 */
+  os<<"}"; /* line 64 slow_hit_count: 0, fast_hit_count: 0 */
+  return os; /* line 65 slow_hit_count: 0, fast_hit_count: 0 */
+} /* line 66 slow_hit_count: 0, fast_hit_count: 0 */
+template<class T,class E> ostream& operator<<(ostream& os,const map<T,E>& v){ /* line 67 slow_hit_count: 0, fast_hit_count: 0 */
+  os<<"{";bool f=false; /* line 68 slow_hit_count: 0, fast_hit_count: 0 */
+  for(auto& x:v){if(f)os<<",";os<<x;f=true;} /* line 69 slow_hit_count: 0, fast_hit_count: 0 */
+  os<<"}"; /* line 70 slow_hit_count: 0, fast_hit_count: 0 */
+  return os; /* line 71 slow_hit_count: 0, fast_hit_count: 0 */
+} /* line 72 slow_hit_count: 0, fast_hit_count: 0 */
+template<class T> inline bool chmax(T& a,const T b){bool x=a<b;if(x)a=b;return x;} /* line 73 slow_hit_count: 0, fast_hit_count: 0 */
+template<class T> inline bool chmin(T& a,const T b){bool x=a>b;if(x)a=b;return x;} /* line 74 slow_hit_count: 0, fast_hit_count: 0 */
+#ifdef DEBUG /* line 75 slow_hit_count: 0, fast_hit_count: 0 */
+void debugg(){cout<<endl;} /* line 76 slow_hit_count: 0, fast_hit_count: 0 */
+template<class T,class... Args>void debugg(const T& x,const Args&... args){cout<<" "<<x;debugg(args...);} /* line 77 slow_hit_count: 0, fast_hit_count: 0 */
+#define debug(...) cout<<__LINE__<<" ["<<#__VA_ARGS__<<"]:",debugg(__VA_ARGS__) /* line 78 slow_hit_count: 0, fast_hit_count: 0 */
+#else /* line 79 slow_hit_count: 0, fast_hit_count: 0 */
+#define debug(...) (void(0)) /* line 80 slow_hit_count: 0, fast_hit_count: 0 */
+#endif /* line 81 slow_hit_count: 0, fast_hit_count: 0 */
+ /* line 82 slow_hit_count: 0, fast_hit_count: 0 */
+inline void startupcpp(void) noexcept{ /* line 83 slow_hit_count: 1, fast_hit_count: 1 */
+  cin.tie(0); /* line 84 slow_hit_count: 1, fast_hit_count: 1 */
+  ios::sync_with_stdio(false); /* line 85 slow_hit_count: 1, fast_hit_count: 1 */
+  cout<<fixed<<setprecision(15); /* line 86 slow_hit_count: 1, fast_hit_count: 1 */
+} /* line 87 slow_hit_count: 1, fast_hit_count: 1 */
+ /* line 88 slow_hit_count: 0, fast_hit_count: 0 */
+ll modinv(ll a,const ll m=mod) noexcept{ /* line 89 slow_hit_count: 2, fast_hit_count: 1 */
+  ll b=m,u=1,v=0,t; /* line 90 slow_hit_count: 2, fast_hit_count: 1 */
+  while(b){ /* line 91 slow_hit_count: 44, fast_hit_count: 22 */
+    t=a/b; /* line 92 slow_hit_count: 42, fast_hit_count: 21 */
+    a-=t*b; swap(a,b); /* line 93 slow_hit_count: 42, fast_hit_count: 21 */
+    u-=t*v; swap(u,v); /* line 94 slow_hit_count: 42, fast_hit_count: 21 */
+  } /* line 95 slow_hit_count: 0, fast_hit_count: 0 */
+  return (u+m)%m; /* line 96 slow_hit_count: 2, fast_hit_count: 1 */
+} /* line 97 slow_hit_count: 0, fast_hit_count: 0 */
+ /* line 98 slow_hit_count: 0, fast_hit_count: 0 */
+ll moddevide(const ll a,const ll b) noexcept{return (a*modinv(b))%mod;} /* line 99 slow_hit_count: 0, fast_hit_count: 0 */
+ /* line 100 slow_hit_count: 0, fast_hit_count: 0 */
+vec modncrlistp,modncrlistm; /* line 101 slow_hit_count: 0, fast_hit_count: 0 */
+ /* line 102 slow_hit_count: 0, fast_hit_count: 0 */
+ll modncr(const ll n,const ll r) noexcept{ /* line 103 slow_hit_count: 265374, fast_hit_count: 200010 */
+  if(n<r||r<0)return 0; /* line 104 slow_hit_count: 265374, fast_hit_count: 200010 */
+  ll i,size=modncrlistp.size(); /* line 105 slow_hit_count: 132703, fast_hit_count: 100020 */
+  if(size<=n){ /* line 106 slow_hit_count: 132703, fast_hit_count: 100020 */
+    modncrlistp.resize(n+1); /* line 107 slow_hit_count: 2, fast_hit_count: 1 */
+    modncrlistm.resize(n+1); /* line 108 slow_hit_count: 2, fast_hit_count: 1 */
+    if(!size){ /* line 109 slow_hit_count: 2, fast_hit_count: 1 */
+      modncrlistp[0]=modncrlistm[0]=1; /* line 110 slow_hit_count: 1, fast_hit_count: 1 */
+      size++; /* line 111 slow_hit_count: 0, fast_hit_count: 0 */
+    } /* line 112 slow_hit_count: 0, fast_hit_count: 0 */
+    For(i,size,n+1)modncrlistp[i]=modncrlistp[i-1]*i%mod; /* line 113 slow_hit_count: 36064, fast_hit_count: 20001 */
+    modncrlistm[n]=modinv(modncrlistp[n]); /* line 114 slow_hit_count: 2, fast_hit_count: 1 */
+    for(i=n;i>size;--i)modncrlistm[i-1]=modncrlistm[i]*i%mod; /* line 115 slow_hit_count: 36062, fast_hit_count: 20000 */
+  } /* line 116 slow_hit_count: 0, fast_hit_count: 0 */
+  return modncrlistp[n]*modncrlistm[r]%mod*modncrlistm[n-r]%mod; /* line 117 slow_hit_count: 132703, fast_hit_count: 100020 */
+} /* line 118 slow_hit_count: 0, fast_hit_count: 0 */
+ /* line 119 slow_hit_count: 0, fast_hit_count: 0 */
+ll modpow(ll a,ll n,const ll m=mod){ /* line 120 slow_hit_count: 0, fast_hit_count: 0 */
+  if(n<0)return 0; /* line 121 slow_hit_count: 0, fast_hit_count: 0 */
+  ll res=1; /* line 122 slow_hit_count: 0, fast_hit_count: 0 */
+  while(n>0){ /* line 123 slow_hit_count: 0, fast_hit_count: 0 */
+    if(n&1)res=res*a%m; /* line 124 slow_hit_count: 0, fast_hit_count: 0 */
+    a=a*a%m; /* line 125 slow_hit_count: 0, fast_hit_count: 0 */
+    n>>=1; /* line 126 slow_hit_count: 0, fast_hit_count: 0 */
+  } /* line 127 slow_hit_count: 0, fast_hit_count: 0 */
+  return res; /* line 128 slow_hit_count: 0, fast_hit_count: 0 */
+} /* line 129 slow_hit_count: 0, fast_hit_count: 0 */
+ /* line 130 slow_hit_count: 0, fast_hit_count: 0 */
+constexpr ll gcd(const ll a,const ll b) noexcept{return (!b)?abs(a):(a%b==0)?abs(b):gcd(b,a%b);} /* line 131 slow_hit_count: 0, fast_hit_count: 0 */
+constexpr ll lcm(const ll a,const ll b) noexcept{return a/gcd(a,b)*b;} /* line 132 slow_hit_count: 0, fast_hit_count: 0 */
+ /* line 133 slow_hit_count: 0, fast_hit_count: 0 */
+ll N,M,K,H,W,A,B,C,D; /* line 134 slow_hit_count: 0, fast_hit_count: 0 */
+string s,t; /* line 135 slow_hit_count: 0, fast_hit_count: 0 */
+ll ans; /* line 136 slow_hit_count: 0, fast_hit_count: 0 */
+int main(){ /* line 137 slow_hit_count: 1, fast_hit_count: 1 */
+  startupcpp(); /* line 138 slow_hit_count: 1, fast_hit_count: 1 */
+int codeforces;cin>>codeforces;while(codeforces--){ /* line 139 slow_hit_count: 11, fast_hit_count: 11 */
+  ll i; /* line 140 slow_hit_count: 0, fast_hit_count: 0 */
+  cin>>N>>A>>B; /* line 141 slow_hit_count: 10, fast_hit_count: 10 */
+  ans=min(B-N-1,-A)*modncr(N,N/2); /* line 142 slow_hit_count: 10, fast_hit_count: 10 */
+  if(ans<0)ans=0; /* line 143 slow_hit_count: 10, fast_hit_count: 10 */
+  if(N&1)ans+=ans; /* line 144 slow_hit_count: 10, fast_hit_count: 10 */
+  ans%=mod; /* line 145 slow_hit_count: 10, fast_hit_count: 10 */
+  set<ll> se; /* line 146 slow_hit_count: 20, fast_hit_count: 20 */
+  rep(i,N)se.emplace(-(A-i-1)); /* line 147 slow_hit_count: 230723, fast_hit_count: 200010 */
+  rep(i,N)se.emplace(B-i-1); /* line 148 slow_hit_count: 230723, fast_hit_count: 200010 */
+  if(*se.begin()==0)se.erase(se.begin()); /* line 149 slow_hit_count: 10, fast_hit_count: 10 */
+  debug(ans,se); /* line 150 slow_hit_count: 0, fast_hit_count: 0 */
+  for(auto i:se){ /* line 151 slow_hit_count: 461436, fast_hit_count: 400010 */
+    //+候補はb箇所,-候補はa箇所 /* line 152 slow_hit_count: 0, fast_hit_count: 0 */
+    ll a=min(-i-A+N+1,N),b=min(B-i,N); /* line 153 slow_hit_count: 461426, fast_hit_count: 400000 */
+    if(a<=0||b<=0||a+b<N)continue; /* line 154 slow_hit_count: 461426, fast_hit_count: 400000 */
+    //+確定はc箇所,-確定はd箇所 /* line 155 slow_hit_count: 0, fast_hit_count: 0 */
+    ll c=min(b,N-a),d=min(a,N-b); /* line 156 slow_hit_count: 230713, fast_hit_count: 200000 */
+    //どちらでもよいのがm箇所 /* line 157 slow_hit_count: 0, fast_hit_count: 0 */
+    ll m=N-c-d; /* line 158 slow_hit_count: 230713, fast_hit_count: 200000 */
+    if(m<0)continue; /* line 159 slow_hit_count: 230713, fast_hit_count: 200000 */
+    // debug(a,b,c,d,m); /* line 160 slow_hit_count: 0, fast_hit_count: 0 */
+    ans+=modncr(m,N/2-c); /* line 161 slow_hit_count: 230713, fast_hit_count: 200000 */
+    if(N&1)ans+=modncr(m,N/2+1-c); /* line 162 slow_hit_count: 230713, fast_hit_count: 200000 */
+  } /* line 163 slow_hit_count: 0, fast_hit_count: 0 */
+  print(ans%mod); /* line 164 slow_hit_count: 10, fast_hit_count: 10 */
+} /* line 165 slow_hit_count: 0, fast_hit_count: 0 */
+} /* line 166 slow_hit_count: 1, fast_hit_count: 1 */
+
+
+assistant: ### Phase 1: Identify Expensive or Inefficient Code Segments
+
+Based on the hit count analysis provided, the following observations can be made:
+
+1. **Line 147 and Line 148 (`rep(i, N) se.emplace(...);`)**: These lines have significantly higher hit counts for the slow input compared to the fast input. This indicates frequent insertions into the set, which is potentially costly because each insertion involves a logarithmic time complexity operation due to balancing.
+
+2. **Line 151 (`for(auto i: se)`)**: The loop iterating over `se` has a higher hit count for the slow input, suggesting that the number of elements processed is larger, likely leading to longer execution times.
+
+3. **Line 153-162**: These lines process elements from the set `se` and perform operations such as `min`, arithmetic calculations, and combinations (`modncr`). The increased hit counts suggest that they are part of a nested loop causing inefficiencies.
+
+4. **`modncr` Function (Line 103-117)**: This function has a significantly higher hit count for the slow input, indicating that combination calculations are a performance hotspot. Since it's used in calculating combinations (`modncr`) which are potentially expensive and called frequently, this could be a source of inefficiency.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on the analysis above, the following natural language invariants can be derived:
+
+1. **Invariant on Set Operations**: 
+   - "When the difference between `A` and `B` results in a large range of values being inserted into the set `se`, the program may slow down due to increased computational overhead from managing set operations."
+
+2. **Invariant on Loop Complexity**:
+   - "If the number of elements in the set `se` becomes very large relative to `N`, the subsequent nested loop processing these elements can result in significant slowdowns."
+
+3. **Invariant on Combination Calculations**:
+   - "When `modncr` is called frequently with large `N` values, the calculation of combinations can become a bottleneck, particularly if `N` approaches its upper constraint."
+
+4. **Invariant on Data Range and Constraints**:
+   - "If the range `r - l` allows for a large number of valid `a_i` values, the possible configurations of `i` and `j` pairs increase, causing more complex evaluations and potential slow paths."
+
+Each of these invariants abstracts the conditions under which the program enters a slow path without depending on specific numeric inputs, thereby providing useful insights for optimizing performance or guiding future testing strategies.
+
+user: (A) Context
+
+You have already:
+1. Identified expensive code segments (Phase 1).
+2. Derived performance-characterizing invariants in natural language (Phase 2).
+
+Now, you MUST transform these invariants into runtime checks and integrate them into the given C++ program.
+
+(B) Tasks: Revisit the performance-characteristic invariants you inferred in natural langauge and write faithful, error-free C++ code snippets to implement them
+
+You MUST do perform this task in two phases and provide separate answers for both: First, translating the invariants into checker code in C++ (phase 3, below). Second, integrating those checker C++ code snippets with the original program for which you inferred those invariants (phase 4, below).   
+
+Phase 3: Implement the natural language invariants inferred previously, in C++. In this phase you are asked to, 
+1. For each natural language invariant from Phase 2, you MUST produce C++ code that checks the condition at runtime.
+2. You MUST NOT relax or trivialize the checker code implementing these performance-characterizing invariants. You MUST faithfully implement them as described. 
+3. Use the following template for writing checker code in C++ which could also be implemented as a helper function:
+```cpp
+    if (/* condition based on the NL invariant */) {
+        cerr << "Warning: Performance bottleneck condition triggered!" << endl;
+        abort();
+    }
+``` 
+
+Note that not all performance-characterizing invariants are about maximising input size. You may refer to the following examples for inspiration --- some maximising the input size, some not --- but do not simply replicate them exactly. Rather, use them as inspiration to infer and tailor performance-characterizing invariants tailored for the C++ code and problem statement you were asked to analize:
+
+Example Invariant #1:
+
+A potential slowdown arises when certain arrays or lists grow large, causing repeated operations. One way to detect this is to check if the size of a critical array arr (used in a nested loop) exceeds a broad threshold.
+
+Natural language description: “If arr is very large and used in nested loops, the code may repeat operations too many times.”
+
+Code implementing the natural language description:
+
+```cpp
+// Sample checker function
+void check_size_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: size_invariant triggered - array too large for nested loops" << endl;
+        abort();
+    }
+}
+
+// Usage in main or function
+int arrSize = arr.size();
+check_size_invariant(arrSize > 50000);
+```
+
+Example Invariant #2:
+
+Repeated sorting or searching on a data structure can degrade performance, especially if the data structure is large or if the sorting is called multiple times in a loop.
+
+Natural language description: “If a large portion of the code’s execution time is spent in sorting a data structure repeatedly, performance may degrade. Check if the data structure is frequently resorted or reprocessed when it has many elements.”
+
+Code implementing the natural language description:
+
+```cpp
+void check_sort_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: sort_invariant triggered - repeatedly sorting large data" << endl;
+        abort();
+    }
+}
+
+// After reading input or before sorting
+int elementCount = someDataStructure.size();
+check_sort_invariant(elementCount > 100000 && /* some condition indicating repeated sorts */);
+```
+
+Example Invariant #3:
+
+Recursion (e.g., graph traversal or the iterative version of it, recurssive dynamic programming, recurssive computation like computing the next Fibonacci number, etc.) can become expensive if it explores a large search space. A sign of this might be a high branching factor combined with a deep recursion depth.
+
+Natural language description: “If the recursion depth is likely to exceed a certain level or if many branches are processed at each recursive call, the computation may become very expensive.”
+
+```cpp
+void check_dfs_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: dfs_invariant triggered - high recursion depth or branching factor" << endl;
+        abort();
+    }
+}
+
+// Before calling dfs or inside setup
+check_dfs_invariant((maxDepthEstimate > 50) && (branchFactorEstimate > 10));
+```
+
+Example Invariant #4:
+
+Memory usage spikes or large matrix operations can slow down computation if array dimensions become too large. If the program initializes a 2D array based on input dimensions n and m, certain input combinations can trigger large memory footprints or nested loops over the entire matrix.
+
+Natural language description: “If n and m together exceed a threshold that implies large matrix computations, the program may slow significantly.”
+
+```cpp
+void check_matrix_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: matrix_invariant triggered - potentially large matrix operations" << endl;
+        abort();
+    }
+}
+
+// After reading n, m
+check_matrix_invariant(n * m > 1000000);
+```
+
+Example invariant #5:
+
+If a program runs an expensive function or heavy-weight code (e.g. memory allocation) repeatedly within a performance-critical loop or function, the overhead for calling that function can accumulate, slowing the program significantly.
+
+Natural langauge description: "If function foo is an expensive function to execute, and is called a large number of times in a loop or recursive function, the program may slow down significantly"
+
+```cpp
+void check_expensive_function_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: expensive function invariant triggered - excessive calls" << endl;
+        abort();
+    }
+}
+
+check_expensive_function_invariant(n > 1000000);  // arbitrary, but large threshold
+for (i = 0; i < n; ++i) { 
+    foo(); // expensive function
+}
+```
+
+
+Phase 4: Propagate and insert conditional checks. In this phase you are asked to,
+1. Place each check at an effective point in the control/data flow (e.g., after reading inputs, before heavy loops) so you do not add overhead in tight loops. Note that the checker code could also be implemented as a helper function.
+2. If multiple checks overlap, merge or adjust them carefully to avoid redundant warnings.
+3. Provide the final, instrumented C++ code in code fences. Ensure it compiles cleanly and runs without errors.
+4. For each inserted check, add a short comment explaining which bottleneck it detects.
+
+Note the following important considerations when translating the inferred performance-characterizing invariants into code and propagating the checkers to the most efective program point by instrumenting the original code: 
+1. Avoid hardcoding. Don’t rely solely on the exact values from the provided slow input; think in terms of categories or thresholds that lead to slow execution.
+2. In addition to the warning message, remember to insert an "abort()" statement at the end of the checker.
+3. Focus on fuzzer utility. The checks should help a fuzzer detect slow performance triggers by hitting these conditions.
+
+As a refresher, below you are provided with the same program statement and C++ code for which you already inferred performance-characterizing invariants:
+
+Problem statement:
+Let's call an integer array a_1, a_2, ..., a_n good if a_i ≠ i for each i.
+
+Let F(a) be the number of pairs (i, j) (1 ≤ i < j ≤ n) such that a_i + a_j = i + j.
+
+Let's say that an array a_1, a_2, ..., a_n is excellent if: 
+
+  * a is good; 
+  * l ≤ a_i ≤ r for each i; 
+  * F(a) is the maximum possible among all good arrays of size n. 
+
+
+
+Given n, l and r, calculate the number of excellent arrays modulo 10^9 + 7.
+
+Input
+
+The first line contains a single integer t (1 ≤ t ≤ 1000) — the number of test cases. 
+
+The first and only line of each test case contains three integers n, l, and r (2 ≤ n ≤ 2 ⋅ 10^5; -10^9 ≤ l ≤ 1; n ≤ r ≤ 10^9).
+
+It's guaranteed that the sum of n doesn't exceed 2 ⋅ 10^5.
+
+Output
+
+For each test case, print the number of excellent arrays modulo 10^9 + 7.
+
+Example
+
+Input
+
+
+4
+3 0 3
+4 -3 5
+42 -33 55
+69 -42 146
+
+
+Output
+
+
+4
+10
+143922563
+698570404
+
+Note
+
+In the first test case, it can be proven that the maximum F(a) among all good arrays a is equal to 2. The excellent arrays are: 
+
+  1. [2, 1, 2]; 
+  2. [0, 3, 2]; 
+  3. [2, 3, 2]; 
+  4. [3, 0, 1]. 
+
+Solution (C++ code):
+{solution}
+
+
+assistant: ### Phase 3: Implement the Natural Language Invariants in C++
+
+Here are the runtime checks for each performance-characterizing invariant derived in Phase 2:
+
+1. **Invariant on Set Operations:** 
+   - Detects when the range of values inserted into the set `se` due to `A` and `B` becomes large.
+   
+```cpp
+void check_set_invariant(const set<ll>& se, ll N) {
+    if (se.size() > 1.5 * N) { // Arbitrary threshold; se shouldn't grow too large
+        cerr << "Warning: set_invariant triggered - large number of elements in set" << endl;
+        abort();
+    }
+}
+```
+
+2. **Invariant on Loop Complexity:**
+   - Checks if processing elements in set `se` becomes a bottleneck due to size.
+
+```cpp
+void check_loop_invariant(const set<ll>& se, ll N) {
+    if (se.size() > 1.5 * N) { // Again, a threshold that triggers when set operations may slow down
+        cerr << "Warning: loop_invariant triggered - excessive element processing in loop" << endl;
+        abort();
+    }
+}
+```
+
+3. **Invariant on Combination Calculations:**
+   - Monitors when `modncr` is called frequently with large `N`.
+
+```cpp
+void check_combination_invariant(ll callCount, ll threshold) {
+    if (callCount > threshold) { // Threshold on combination function calls
+        cerr << "Warning: combination_invariant triggered - excessive combination calculations" << endl;
+        abort();
+    }
+}
+```
+
+4. **Invariant on Data Range and Constraints:**
+   - Ensures the range `r - l` does not excessively widen to cause complex evaluations.
+
+```cpp
+void check_range_invariant(ll l, ll r, ll N) {
+    if ((r - l) > 2 * N) { // Threshold on allowable range size
+        cerr << "Warning: range_invariant triggered - excessive range size" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrate Runtime Checks into the Original C++ Program
+
+Now, let's integrate the aforementioned checks into the provided C++ code. We'll place these checks at points where the data structures or operations they guard against are prepared or executed.
+
+```cpp
+#pragma GCC target("avx")
+#pragma GCC optimize("O3")
+#pragma GCC optimize("unroll-loops")
+#include<bits/stdc++.h>
+using namespace std;
+using ll=long long;
+using vec=vector<ll>;
+#define rep(i,N) for(i=0;i<(ll)N;++i)
+constexpr ll mod=1000000007;
+
+void check_set_invariant(const set<ll>& se, ll N) {
+    if (se.size() > 1.5 * N) { // Arbitrary threshold; se shouldn't grow too large
+        cerr << "Warning: set_invariant triggered - large number of elements in set" << endl;
+        abort();
+    }
+}
+
+void check_loop_invariant(const set<ll>& se, ll N) {
+    if (se.size() > 1.5 * N) { // Again, a threshold that triggers when set operations may slow down
+        cerr << "Warning: loop_invariant triggered - excessive element processing in loop" << endl;
+        abort();
+    }
+}
+
+void check_combination_invariant(ll callCount, ll threshold) {
+    if (callCount > threshold) { // Threshold on combination function calls
+        cerr << "Warning: combination_invariant triggered - excessive combination calculations" << endl;
+        abort();
+    }
+}
+
+void check_range_invariant(ll l, ll r, ll N) {
+    if ((r - l) > 2 * N) { // Threshold on allowable range size
+        cerr << "Warning: range_invariant triggered - excessive range size" << endl;
+        abort();
+    }
+}
+
+ll modinv(ll a,const ll m=mod) noexcept{
+  ll b=m,u=1,v=0,t;
+  while(b){
+    t=a/b;
+    a-=t*b; swap(a,b);
+    u-=t*v; swap(u,v);
+  }
+  return (u+m)%m;
+}
+
+ll modncr(const ll n,const ll r) noexcept{
+  if(n<r||r<0)return 0;
+  static vec modncrlistp={1},modncrlistm={1};
+  ll i,size=modncrlistp.size();
+  if(size<=n){
+    modncrlistp.resize(n+1);
+    modncrlistm.resize(n+1);
+    if(!size){
+      modncrlistp[0]=modncrlistm[0]=1;
+      size++;
+    }
+    for(i=size;i<=n;i++) modncrlistp[i]=modncrlistp[i-1]*i%mod;
+    modncrlistm[n]=modinv(modncrlistp[n]);
+    for(i=n;i>size;--i) modncrlistm[i-1]=modncrlistm[i]*i%mod;
+  }
+  return modncrlistp[n]*modncrlistm[r]%mod*modncrlistm[n-r]%mod;
+}
+
+int main(){
+  ios::sync_with_stdio(false);
+  cin.tie(0);
+  int codeforces;
+  cin>>codeforces;
+  while(codeforces--){
+    ll i, N, A, B;
+    cin>>N>>A>>B;
+    
+    // Check range invariant
+    check_range_invariant(A, B, N);
+
+    ll ans=min(B-N-1,-A)*modncr(N,N/2);
+    if(ans<0)ans=0;
+    if(N&1)ans+=ans;
+    ans%=mod;
+
+    set<ll> se;
+    rep(i,N) se.emplace(-(A-i-1));
+    rep(i,N) se.emplace(B-i-1);
+
+    // Check set invariant
+    check_set_invariant(se, N);
+
+    if(*se.begin()==0) se.erase(se.begin());
+
+    // Check loop invariant
+    check_loop_invariant(se, N);
+
+    ll combinationCallCount = 0; // For tracking combination calls
+    for(auto i:se){
+      ll a=min(-i-A+N+1,N),b=min(B-i,N);
+      if(a<=0||b<=0||a+b<N) continue;
+      ll c=min(b,N-a),d=min(a,N-b);
+      ll m=N-c-d;
+      if(m<0) continue;
+
+      // Increase combination call count
+      combinationCallCount++;
+
+      ans+=modncr(m,N/2-c);
+      if(N&1) ans+=modncr(m,N/2+1-c);
+    }
+
+    // Check combination invariant
+    check_combination_invariant(combinationCallCount, 10 * N); // Example threshold
+
+    cout << ans % mod << endl;
+  }
+  return 0;
+}
+```
+
+### Explanation:
+
+- **Set and Loop Invariants**: The `check_set_invariant` and `check_loop_invariant` functions are called after the set is populated. They use a threshold (`1.5 * N`) to ensure the set's growth doesn't lead to performance issues.
+  
+- **Combination Invariant**: A call counter (`combinationCallCount`) is added to track how many times the combination function is invoked. The checker is called after the loop, verifying against an arbitrary threshold.
+
+- **Range Invariant**: This check is performed immediately after reading inputs, ensuring the data range remains reasonable.
+
+These checks help identify and abort the program execution if any performance-degrading condition is met during runtime, aiding in debugging and performance tuning.
+
