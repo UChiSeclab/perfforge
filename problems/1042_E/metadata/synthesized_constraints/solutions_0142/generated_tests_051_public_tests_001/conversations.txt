@@ -1,0 +1,707 @@
+system: You are a helpful assistant good at coding.
+
+user: (A) Context
+
+You are an experienced C software engineer focusing on performance bottlenecks. You have:
+1. A problem statement describing a task or algorithm (with constraints such as n <= 100).
+2. A C program that implements a solution to that problem.
+3. Two inputs: a “fast” input that completes quickly, and a “slow” input that takes much longer—both inputs have similar size/structure.
+4. Line-level hit counts for both runs, showing which lines get hit significantly more often on the slow input.
+
+Your goal is to diagnose why the program runs slowly for the slow input and derive conditions or invariants that capture what triggers this slowdown.
+
+(B) Tasks: Analyze the given code and generate performance-characterizing invariants in natural language
+
+Phase 1: Identify expensive or onefficient code segments. In this phase you are asked to,
+1. Compare line-level hit counts between the fast and slow runs.
+2. Pinpoint lines or functions that get significantly more hits under the slow input.
+3. Infer how these lines might be interacting with data structures, loops, recursion, etc., especially as they relate to the input constraints (e.g., n <= 100).
+
+Phase 2: Derive performance-characterizing invariants (natural language). In this phase you are asked to,
+1. Generate natural language statements that describe conditions under which the program likely enters a slow path.
+2. Avoid using specific numeric values from the slow input; abstract them into categories or thresholds. However, make sure those thresholds adhere to the input constraints of the problem.
+3. Correlate these conditions strongly to input patterns (e.g., “when n is close to 100 and there is a nested loop,” or “when a data structure is repeatedly sorted”).
+4. Ensure your statements are broad enough to catch possible future slow scenarios, but still reflect realistic triggers given the constraints (like n <= 100).
+
+Note that not all performance-characterizing invariants are about maximising input size. You may refer to the following examples for inspiration --- some maximising the input size, some not --- but do not simply replicate them exactly. Rather, use them as inspiration to infer and tailor performance-characterizing invariants tailored for the C code and problem statement you were asked to analize:
+
+Example Invariant #1:
+
+A potential slowdown arises when certain arrays or lists grow large, causing repeated operations. One way to detect this is to check if the size of a critical array arr (used in a nested loop) exceeds a broad threshold.
+
+Natural language description: “If arr is very large and used in nested loops, the code may repeat operations too many times.”
+
+Code implementing the natural language description:
+
+```cpp
+// Sample checker function
+void check_size_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: size_invariant triggered - array too large for nested loops" << endl;
+        abort();
+    }
+}
+
+// Usage in main or function
+int arrSize = arr.size();
+check_size_invariant(arrSize > 50000);
+```
+
+Example Invariant #2:
+
+Repeated sorting or searching on a data structure can degrade performance, especially if the data structure is large or if the sorting is called multiple times in a loop.
+
+Natural language description: “If a large portion of the code’s execution time is spent in sorting a data structure repeatedly, performance may degrade. Check if the data structure is frequently resorted or reprocessed when it has many elements.”
+
+Code implementing the natural language description:
+
+```cpp
+void check_sort_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: sort_invariant triggered - repeatedly sorting large data" << endl;
+        abort();
+    }
+}
+
+// After reading input or before sorting
+int elementCount = someDataStructure.size();
+check_sort_invariant(elementCount > 100000 && /* some condition indicating repeated sorts */);
+```
+
+Example Invariant #3:
+
+Recursion (e.g., graph traversal or the iterative version of it, recurssive dynamic programming, recurssive computation like computing the next Fibonacci number, etc.) can become expensive if it explores a large search space. A sign of this might be a high branching factor combined with a deep recursion depth.
+
+Natural language description: “If the recursion depth is likely to exceed a certain level or if many branches are processed at each recursive call, the computation may become very expensive.”
+
+```cpp
+void check_dfs_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: dfs_invariant triggered - high recursion depth or branching factor" << endl;
+        abort();
+    }
+}
+
+// Before calling dfs or inside setup
+check_dfs_invariant((maxDepthEstimate > 50) && (branchFactorEstimate > 10));
+```
+
+Example Invariant #4:
+
+Memory usage spikes or large matrix operations can slow down computation if array dimensions become too large. If the program initializes a 2D array based on input dimensions n and m, certain input combinations can trigger large memory footprints or nested loops over the entire matrix.
+
+Natural language description: “If n and m together exceed a threshold that implies large matrix computations, the program may slow significantly.”
+
+```cpp
+void check_matrix_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: matrix_invariant triggered - potentially large matrix operations" << endl;
+        abort();
+    }
+}
+
+// After reading n, m
+check_matrix_invariant(n * m > 1000000);
+```
+
+Example invariant #5:
+
+If a program runs an expensive function or heavy-weight code (e.g. memory allocation) repeatedly within a performance-critical loop or function, the overhead for calling that function can accumulate, slowing the program significantly.
+
+Natural langauge description: "If function foo is an expensive function to execute, and is called a large number of times in a loop or recursive function, the program may slow down significantly"
+
+```cpp
+void check_expensive_function_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: expensive function invariant triggered - excessive calls" << endl;
+        abort();
+    }
+}
+
+check_expensive_function_invariant(n > 1000000);  // arbitrary, but large threshold
+for (i = 0; i < n; ++i) { 
+    foo(); // expensive function
+}
+```
+
+(C) Output Requirements
+1. Provide a list of natural language performance invariants explaining under what conditions the code slows down.
+2. Do not mention or rely on exact values from the provided slow input.
+3. Use or suggest threshold values that align with problem constraints (e.g., n <= 100).
+4. The output should be a concise, descriptive set of statements about performance triggers.
+
+(D) Important Considerations
+1. Avoid hardcoding. Don’t rely solely on the exact values from the provided slow input; think in terms of categories or thresholds that lead to slow execution.
+2. Avoid checks inside tight loops. Place checks in a way that does not significantly degrade performance.
+3. Focus on fuzzer utility. The checks should help a fuzzer detect slow performance triggers by hitting these conditions.
+
+(E) Problem Statement
+
+Vasya has got a magic matrix a of size n × m. The rows of the matrix are numbered from 1 to n from top to bottom, the columns are numbered from 1 to m from left to right. Let a_{ij} be the element in the intersection of the i-th row and the j-th column.
+
+Vasya has also got a chip. Initially, the chip is in the intersection of the r-th row and the c-th column (that is, in the element a_{rc}). Vasya performs the following process as long as possible: among all elements of the matrix having their value less than the value of the element with the chip in it, Vasya randomly and equiprobably chooses one element and moves his chip to this element.
+
+After moving the chip, he adds to his score the square of the Euclidean distance between these elements (that is, between the element in which the chip is now and the element the chip was moved from). The process ends when there are no elements having their values less than the value of the element with the chip in it.
+
+Euclidean distance between matrix elements with coordinates (i_1, j_1) and (i_2, j_2) is equal to √{(i_1-i_2)^2 + (j_1-j_2)^2}.
+
+Calculate the expected value of the Vasya's final score.
+
+It can be shown that the answer can be represented as P/Q, where P and Q are coprime integer numbers, and Q not≡ 0~(mod ~ 998244353). Print the value P ⋅ Q^{-1} modulo 998244353.
+
+Input
+
+The first line of the input contains two integers n and m (1 ≤ n, m ≤ 1 000) — the number of rows and the number of columns in the matrix a.
+
+The following n lines contain description of the matrix a. The i-th line contains m integers a_{i1}, a_{i2}, ..., a_{im} ~ (0 ≤ a_{ij} ≤ 10^9).
+
+The following line contains two integers r and c (1 ≤ r ≤ n, 1 ≤ c ≤ m) — the index of row and the index of column where the chip is now.
+
+Output
+
+Print the expected value of Vasya's final score in the format described in the problem statement.
+
+Examples
+
+Input
+
+1 4
+1 1 2 1
+1 3
+
+
+Output
+
+2
+
+
+Input
+
+2 3
+1 5 7
+2 3 1
+1 2
+
+
+Output
+
+665496238
+
+Note
+
+In the first example, Vasya will move his chip exactly once. The expected value of the final score is equal to (1^2 + 2^2+ 1^2)/(3) = 2.
+
+(F) Program Solving the Problem Statement
+
+#include <bits/stdc++.h>
+const long long mod = 998244353;
+struct Element {
+  int r, c;
+  long long v;
+  Element() {}
+  Element(int r, int c, long long v) : r(r), c(c), v(v) {}
+};
+Element a[10000005];
+long long ans[1005][1005];
+long long power(long long a, long long b) {
+  long long res = 1;
+  while (b) {
+    if (b % 2) res = res * a % mod;
+    a = a * a % mod;
+    b /= 2;
+  }
+  return res;
+}
+long long inv(long long u) { return power(u, mod - 2); }
+int main() {
+  int n, m;
+  scanf("%d%d", &n, &m);
+  for (int i = 1; i <= n; i++) {
+    for (int j = 1; j <= m; j++) {
+      long long v;
+      scanf("%lld", &v);
+      a[(i - 1) * m + j] = Element(i, j, v);
+    }
+  }
+  int all = n * m;
+  std::sort(a + 1, a + 1 + all,
+            [](Element& u, Element& v) { return u.v < v.v; });
+  int x0, y0;
+  scanf("%d%d", &x0, &y0);
+  long long sqSum = 0, xSum = 0, ySum = 0, eSum = 0;
+  int p = 1;
+  while (p <= all) {
+    int np = p;
+    while (np + 1 <= all && a[np + 1].v == a[p].v) np++;
+    for (int i = p; i <= np; i++) {
+      long long r = a[i].r, c = a[i].c;
+      long long E =
+          (sqSum + (p - 1) * 1ll * (r * r + c * c) % mod + eSum) % mod;
+      E = (E - 2ll * r * xSum % mod - 2ll * c * ySum % mod) % mod;
+      if (E < 0) E += mod;
+      E = E * inv(p - 1) % mod;
+      ans[r][c] = E;
+    }
+    for (int i = p; i <= np; i++) {
+      long long r = a[i].r, c = a[i].c;
+      sqSum = (sqSum + r * r % mod + c * c % mod) % mod;
+      eSum = (eSum + ans[r][c]) % mod;
+      xSum = (xSum + r) % mod;
+      ySum = (ySum + c) % mod;
+    }
+    p = np + 1;
+  }
+  printf("%lld\n", ans[x0][y0]);
+  return 0;
+}
+
+
+(G) The Slow & Fast Inputs
+
+(G.1) Slow Input
+
+13 8
+5 7 7 7 3 1 10 7
+2 10 5 4 5 4 9 1
+8 6 10 8 10 9 9 0
+7 10 9 8 6 7 5 8
+1 6 4 2 4 9 3 10
+10 4 4 6 5 6 6 4
+7 5 3 9 8 5 1 3
+13 6 1 9 10 5 3 7
+6 3 7 6 9 9 1 6
+8 6 5 9 1 9 2 1
+1 8 2 8 9 7 3 3
+7 2 2 4 4 6 7 10
+7 8 6 10 2 6 10 9
+1 6
+
+
+(G.2) Fast Input
+
+2 3
+1 5 7
+2 3 1
+1 2
+
+
+(H) Hit Count Information of Slow Input and Fast Input (Aggregated):
+
+#include <bits/stdc++.h> /* line 1 slow_hit_count: 0, fast_hit_count: 0 */
+const long long mod = 998244353; /* line 2 slow_hit_count: 0, fast_hit_count: 0 */
+struct Element { /* line 3 slow_hit_count: 0, fast_hit_count: 0 */
+  int r, c; /* line 4 slow_hit_count: 0, fast_hit_count: 0 */
+  long long v; /* line 5 slow_hit_count: 0, fast_hit_count: 0 */
+  Element() {} /* line 6 slow_hit_count: 10000005, fast_hit_count: 10000005 */
+  Element(int r, int c, long long v) : r(r), c(c), v(v) {} /* line 7 slow_hit_count: 104, fast_hit_count: 6 */
+}; /* line 8 slow_hit_count: 0, fast_hit_count: 0 */
+Element a[10000005]; /* line 9 slow_hit_count: 0, fast_hit_count: 0 */
+long long ans[1005][1005]; /* line 10 slow_hit_count: 0, fast_hit_count: 0 */
+long long power(long long a, long long b) { /* line 11 slow_hit_count: 104, fast_hit_count: 6 */
+  long long res = 1; /* line 12 slow_hit_count: 104, fast_hit_count: 6 */
+  while (b) { /* line 13 slow_hit_count: 3224, fast_hit_count: 186 */
+    if (b % 2) res = res * a % mod; /* line 14 slow_hit_count: 3120, fast_hit_count: 180 */
+    a = a * a % mod; /* line 15 slow_hit_count: 3120, fast_hit_count: 180 */
+    b /= 2; /* line 16 slow_hit_count: 3120, fast_hit_count: 180 */
+  } /* line 17 slow_hit_count: 0, fast_hit_count: 0 */
+  return res; /* line 18 slow_hit_count: 104, fast_hit_count: 6 */
+} /* line 19 slow_hit_count: 0, fast_hit_count: 0 */
+long long inv(long long u) { return power(u, mod - 2); } /* line 20 slow_hit_count: 104, fast_hit_count: 6 */
+int main() { /* line 21 slow_hit_count: 1, fast_hit_count: 1 */
+  int n, m; /* line 22 slow_hit_count: 0, fast_hit_count: 0 */
+  scanf("%d%d", &n, &m); /* line 23 slow_hit_count: 1, fast_hit_count: 1 */
+  for (int i = 1; i <= n; i++) { /* line 24 slow_hit_count: 14, fast_hit_count: 3 */
+    for (int j = 1; j <= m; j++) { /* line 25 slow_hit_count: 117, fast_hit_count: 8 */
+      long long v; /* line 26 slow_hit_count: 0, fast_hit_count: 0 */
+      scanf("%lld", &v); /* line 27 slow_hit_count: 104, fast_hit_count: 6 */
+      a[(i - 1) * m + j] = Element(i, j, v); /* line 28 slow_hit_count: 104, fast_hit_count: 6 */
+    } /* line 29 slow_hit_count: 0, fast_hit_count: 0 */
+  } /* line 30 slow_hit_count: 0, fast_hit_count: 0 */
+  int all = n * m; /* line 31 slow_hit_count: 1, fast_hit_count: 1 */
+  std::sort(a + 1, a + 1 + all, /* line 32 slow_hit_count: 1, fast_hit_count: 1 */
+            [](Element& u, Element& v) { return u.v < v.v; }); /* line 33 slow_hit_count: 663, fast_hit_count: 18 */
+  int x0, y0; /* line 34 slow_hit_count: 0, fast_hit_count: 0 */
+  scanf("%d%d", &x0, &y0); /* line 35 slow_hit_count: 1, fast_hit_count: 1 */
+  long long sqSum = 0, xSum = 0, ySum = 0, eSum = 0; /* line 36 slow_hit_count: 1, fast_hit_count: 1 */
+  int p = 1; /* line 37 slow_hit_count: 1, fast_hit_count: 1 */
+  while (p <= all) { /* line 38 slow_hit_count: 13, fast_hit_count: 6 */
+    int np = p; /* line 39 slow_hit_count: 12, fast_hit_count: 5 */
+    while (np + 1 <= all && a[np + 1].v == a[p].v) np++; /* line 40 slow_hit_count: 104, fast_hit_count: 6 */
+    for (int i = p; i <= np; i++) { /* line 41 slow_hit_count: 116, fast_hit_count: 11 */
+      long long r = a[i].r, c = a[i].c; /* line 42 slow_hit_count: 104, fast_hit_count: 6 */
+      long long E = /* line 43 slow_hit_count: 104, fast_hit_count: 6 */
+          (sqSum + (p - 1) * 1ll * (r * r + c * c) % mod + eSum) % mod; /* line 44 slow_hit_count: 104, fast_hit_count: 6 */
+      E = (E - 2ll * r * xSum % mod - 2ll * c * ySum % mod) % mod; /* line 45 slow_hit_count: 104, fast_hit_count: 6 */
+      if (E < 0) E += mod; /* line 46 slow_hit_count: 104, fast_hit_count: 6 */
+      E = E * inv(p - 1) % mod; /* line 47 slow_hit_count: 104, fast_hit_count: 6 */
+      ans[r][c] = E; /* line 48 slow_hit_count: 104, fast_hit_count: 6 */
+    } /* line 49 slow_hit_count: 0, fast_hit_count: 0 */
+    for (int i = p; i <= np; i++) { /* line 50 slow_hit_count: 116, fast_hit_count: 11 */
+      long long r = a[i].r, c = a[i].c; /* line 51 slow_hit_count: 104, fast_hit_count: 6 */
+      sqSum = (sqSum + r * r % mod + c * c % mod) % mod; /* line 52 slow_hit_count: 104, fast_hit_count: 6 */
+      eSum = (eSum + ans[r][c]) % mod; /* line 53 slow_hit_count: 104, fast_hit_count: 6 */
+      xSum = (xSum + r) % mod; /* line 54 slow_hit_count: 104, fast_hit_count: 6 */
+      ySum = (ySum + c) % mod; /* line 55 slow_hit_count: 104, fast_hit_count: 6 */
+    } /* line 56 slow_hit_count: 0, fast_hit_count: 0 */
+    p = np + 1; /* line 57 slow_hit_count: 12, fast_hit_count: 5 */
+  } /* line 58 slow_hit_count: 0, fast_hit_count: 0 */
+  printf("%lld\n", ans[x0][y0]); /* line 59 slow_hit_count: 1, fast_hit_count: 1 */
+  return 0; /* line 60 slow_hit_count: 1, fast_hit_count: 1 */
+} /* line 61 slow_hit_count: 0, fast_hit_count: 0 */
+
+
+assistant: ### Phase 1: Identify Expensive or Inefficient Code Segments
+
+Upon analyzing the provided hit counts for the fast and slow inputs, the following observations can be made:
+
+1. **Power Function (Lines 11-18):** The `power` function is called 104 times in the slow input compared to just 6 times in the fast input. Additionally, the loop within the `power` function (lines 13-16) is executed 3,224 times for the slow input and only 186 times for the fast input. This suggests that the function is a significant source of computational expense on the slow input.
+
+2. **Sorting (Line 32-33):** The sorting operation is invoked once, and the comparator function is called 663 times for the slow input compared to 18 times for the fast input. This indicates that sorting is more computationally intensive for the slow input.
+
+3. **Main Loop (Lines 38-57):** The outer loop is executed 13 times for the slow input and 6 times for the fast input. The computation inside this loop, which involves updating sums and the `ans` array, is executed more frequently for the slow input, particularly for lines 40-48 and 50-55.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on the above analysis, we can derive the following natural language performance-characterizing invariants:
+
+1. **Repeated Invocation of Power Function:**
+   - **Invariant:** "If the number of times the power function is invoked is large, possibly due to frequent calculations of modular inverses or similar operations, the program may slow down significantly. This is particularly relevant when dealing with a large number of unique elements in the matrix."
+
+2. **Complexity of Sorting:**
+   - **Invariant:** "If the matrix contains many elements with distinct values, the sorting operation may become costly. This can lead to performance degradation, especially when dealing with larger matrix dimensions (close to n * m = 1000 * 1000)."
+
+3. **Accumulated Costs in Main Loop:**
+   - **Invariant:** "When the matrix has many elements with the same value, the program may enter a slow path due to the repeated execution of the main computational loop, which accumulates costs from operations on sums and the `ans` array. This can lead to increased computation time, particularly when there are many tied values in the matrix."
+
+These invariants reflect potential performance bottlenecks and should be useful for identifying slow scenarios in other similar inputs without relying on specific numeric values from the slow input. They focus on general conditions like frequent operations, sorting complexity, and the structure of the matrix values.
+
+user: (A) Context
+
+You have already:
+1. Identified expensive code segments (Phase 1).
+2. Derived performance-characterizing invariants in natural language (Phase 2).
+
+Now, you MUST transform these invariants into runtime checks and integrate them into the given C++ program.
+
+(B) Tasks: Revisit the performance-characteristic invariants you inferred in natural langauge and write faithful, error-free C++ code snippets to implement them
+
+You MUST do perform this task in two phases and provide separate answers for both: First, translating the invariants into checker code in C++ (phase 3, below). Second, integrating those checker C++ code snippets with the original program for which you inferred those invariants (phase 4, below).   
+
+Phase 3: Implement the natural language invariants inferred previously, in C++. In this phase you are asked to, 
+1. For each natural language invariant from Phase 2, you MUST produce C++ code that checks the condition at runtime.
+2. You MUST NOT relax or trivialize the checker code implementing these performance-characterizing invariants. You MUST faithfully implement them as described. 
+3. Use the following template for writing checker code in C++ which could also be implemented as a helper function:
+```cpp
+    if (/* condition based on the NL invariant */) {
+        cerr << "Warning: Performance bottleneck condition triggered!" << endl;
+        abort();
+    }
+``` 
+
+Note that not all performance-characterizing invariants are about maximising input size. You may refer to the following examples for inspiration --- some maximising the input size, some not --- but do not simply replicate them exactly. Rather, use them as inspiration to infer and tailor performance-characterizing invariants tailored for the C++ code and problem statement you were asked to analize:
+
+Example Invariant #1:
+
+A potential slowdown arises when certain arrays or lists grow large, causing repeated operations. One way to detect this is to check if the size of a critical array arr (used in a nested loop) exceeds a broad threshold.
+
+Natural language description: “If arr is very large and used in nested loops, the code may repeat operations too many times.”
+
+Code implementing the natural language description:
+
+```cpp
+// Sample checker function
+void check_size_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: size_invariant triggered - array too large for nested loops" << endl;
+        abort();
+    }
+}
+
+// Usage in main or function
+int arrSize = arr.size();
+check_size_invariant(arrSize > 50000);
+```
+
+Example Invariant #2:
+
+Repeated sorting or searching on a data structure can degrade performance, especially if the data structure is large or if the sorting is called multiple times in a loop.
+
+Natural language description: “If a large portion of the code’s execution time is spent in sorting a data structure repeatedly, performance may degrade. Check if the data structure is frequently resorted or reprocessed when it has many elements.”
+
+Code implementing the natural language description:
+
+```cpp
+void check_sort_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: sort_invariant triggered - repeatedly sorting large data" << endl;
+        abort();
+    }
+}
+
+// After reading input or before sorting
+int elementCount = someDataStructure.size();
+check_sort_invariant(elementCount > 100000 && /* some condition indicating repeated sorts */);
+```
+
+Example Invariant #3:
+
+Recursion (e.g., graph traversal or the iterative version of it, recurssive dynamic programming, recurssive computation like computing the next Fibonacci number, etc.) can become expensive if it explores a large search space. A sign of this might be a high branching factor combined with a deep recursion depth.
+
+Natural language description: “If the recursion depth is likely to exceed a certain level or if many branches are processed at each recursive call, the computation may become very expensive.”
+
+```cpp
+void check_dfs_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: dfs_invariant triggered - high recursion depth or branching factor" << endl;
+        abort();
+    }
+}
+
+// Before calling dfs or inside setup
+check_dfs_invariant((maxDepthEstimate > 50) && (branchFactorEstimate > 10));
+```
+
+Example Invariant #4:
+
+Memory usage spikes or large matrix operations can slow down computation if array dimensions become too large. If the program initializes a 2D array based on input dimensions n and m, certain input combinations can trigger large memory footprints or nested loops over the entire matrix.
+
+Natural language description: “If n and m together exceed a threshold that implies large matrix computations, the program may slow significantly.”
+
+```cpp
+void check_matrix_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: matrix_invariant triggered - potentially large matrix operations" << endl;
+        abort();
+    }
+}
+
+// After reading n, m
+check_matrix_invariant(n * m > 1000000);
+```
+
+Example invariant #5:
+
+If a program runs an expensive function or heavy-weight code (e.g. memory allocation) repeatedly within a performance-critical loop or function, the overhead for calling that function can accumulate, slowing the program significantly.
+
+Natural langauge description: "If function foo is an expensive function to execute, and is called a large number of times in a loop or recursive function, the program may slow down significantly"
+
+```cpp
+void check_expensive_function_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: expensive function invariant triggered - excessive calls" << endl;
+        abort();
+    }
+}
+
+check_expensive_function_invariant(n > 1000000);  // arbitrary, but large threshold
+for (i = 0; i < n; ++i) { 
+    foo(); // expensive function
+}
+```
+
+
+Phase 4: Propagate and insert conditional checks. In this phase you are asked to,
+1. Place each check at an effective point in the control/data flow (e.g., after reading inputs, before heavy loops) so you do not add overhead in tight loops. Note that the checker code could also be implemented as a helper function.
+2. If multiple checks overlap, merge or adjust them carefully to avoid redundant warnings.
+3. Provide the final, instrumented C++ code in code fences. Ensure it compiles cleanly and runs without errors.
+4. For each inserted check, add a short comment explaining which bottleneck it detects.
+
+Note the following important considerations when translating the inferred performance-characterizing invariants into code and propagating the checkers to the most efective program point by instrumenting the original code: 
+1. Avoid hardcoding. Don’t rely solely on the exact values from the provided slow input; think in terms of categories or thresholds that lead to slow execution.
+2. In addition to the warning message, remember to insert an "abort()" statement at the end of the checker.
+3. Focus on fuzzer utility. The checks should help a fuzzer detect slow performance triggers by hitting these conditions.
+
+As a refresher, below you are provided with the same program statement and C++ code for which you already inferred performance-characterizing invariants:
+
+Problem statement:
+Vasya has got a magic matrix a of size n × m. The rows of the matrix are numbered from 1 to n from top to bottom, the columns are numbered from 1 to m from left to right. Let a_{ij} be the element in the intersection of the i-th row and the j-th column.
+
+Vasya has also got a chip. Initially, the chip is in the intersection of the r-th row and the c-th column (that is, in the element a_{rc}). Vasya performs the following process as long as possible: among all elements of the matrix having their value less than the value of the element with the chip in it, Vasya randomly and equiprobably chooses one element and moves his chip to this element.
+
+After moving the chip, he adds to his score the square of the Euclidean distance between these elements (that is, between the element in which the chip is now and the element the chip was moved from). The process ends when there are no elements having their values less than the value of the element with the chip in it.
+
+Euclidean distance between matrix elements with coordinates (i_1, j_1) and (i_2, j_2) is equal to √{(i_1-i_2)^2 + (j_1-j_2)^2}.
+
+Calculate the expected value of the Vasya's final score.
+
+It can be shown that the answer can be represented as P/Q, where P and Q are coprime integer numbers, and Q not≡ 0~(mod ~ 998244353). Print the value P ⋅ Q^{-1} modulo 998244353.
+
+Input
+
+The first line of the input contains two integers n and m (1 ≤ n, m ≤ 1 000) — the number of rows and the number of columns in the matrix a.
+
+The following n lines contain description of the matrix a. The i-th line contains m integers a_{i1}, a_{i2}, ..., a_{im} ~ (0 ≤ a_{ij} ≤ 10^9).
+
+The following line contains two integers r and c (1 ≤ r ≤ n, 1 ≤ c ≤ m) — the index of row and the index of column where the chip is now.
+
+Output
+
+Print the expected value of Vasya's final score in the format described in the problem statement.
+
+Examples
+
+Input
+
+1 4
+1 1 2 1
+1 3
+
+
+Output
+
+2
+
+
+Input
+
+2 3
+1 5 7
+2 3 1
+1 2
+
+
+Output
+
+665496238
+
+Note
+
+In the first example, Vasya will move his chip exactly once. The expected value of the final score is equal to (1^2 + 2^2+ 1^2)/(3) = 2.
+
+Solution (C++ code):
+{solution}
+
+
+assistant: ### Phase 3: Implementing Performance-Characterizing Invariants in C++
+
+Here are the checker functions for each invariant identified in the previous analysis:
+
+1. **Repeated Invocation of Power Function:**
+
+```cpp
+void check_power_function_invariant(int calls) {
+    if (calls > 100) {  // Assuming a threshold for excessive calls
+        cerr << "Warning: Performance bottleneck due to excessive calls to power function!" << endl;
+        abort();
+    }
+}
+```
+
+2. **Complexity of Sorting:**
+
+```cpp
+void check_sort_invariant(int elements) {
+    if (elements > 1000) {  // Threshold based on maximum n*m = 1000*1000
+        cerr << "Warning: Performance bottleneck due to sorting a large number of elements!" << endl;
+        abort();
+    }
+}
+```
+
+3. **Accumulated Costs in Main Loop:**
+
+```cpp
+void check_main_loop_invariant(int uniqueValues) {
+    if (uniqueValues > 500) {  // Assuming a threshold for many unique values
+        cerr << "Warning: Performance bottleneck due to frequent accumulation in main loop!" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrate the Checkers into the Original C++ Program
+
+Below is the modified C++ program with integrated checkers:
+
+```cpp
+#include <bits/stdc++.h>
+const long long mod = 998244353;
+
+struct Element {
+  int r, c;
+  long long v;
+  Element() {}
+  Element(int r, int c, long long v) : r(r), c(c), v(v) {}
+};
+
+Element a[10000005];
+long long ans[1005][1005];
+
+long long power(long long a, long long b) {
+  long long res = 1;
+  int callCount = 0;  // To track how many times this function is called
+  while (b) {
+    if (b % 2) res = res * a % mod;
+    a = a * a % mod;
+    b /= 2;
+    callCount++;
+  }
+  check_power_function_invariant(callCount); // Check for excessive calls
+  return res;
+}
+
+long long inv(long long u) { return power(u, mod - 2); }
+
+int main() {
+  int n, m;
+  scanf("%d%d", &n, &m);
+  
+  for (int i = 1; i <= n; i++) {
+    for (int j = 1; j <= m; j++) {
+      long long v;
+      scanf("%lld", &v);
+      a[(i - 1) * m + j] = Element(i, j, v);
+    }
+  }
+  
+  int all = n * m;
+  check_sort_invariant(all); // Check before sorting if number of elements is large
+
+  std::sort(a + 1, a + 1 + all,
+            [](Element& u, Element& v) { return u.v < v.v; });
+
+  int x0, y0;
+  scanf("%d%d", &x0, &y0);
+  long long sqSum = 0, xSum = 0, ySum = 0, eSum = 0;
+  int p = 1;
+  int uniqueValueCount = 0; // To track unique values processed
+
+  while (p <= all) {
+    int np = p;
+    while (np + 1 <= all && a[np + 1].v == a[p].v) np++;
+    
+    // Counting unique values
+    uniqueValueCount++;
+
+    for (int i = p; i <= np; i++) {
+      long long r = a[i].r, c = a[i].c;
+      long long E =
+          (sqSum + (p - 1) * 1ll * (r * r + c * c) % mod + eSum) % mod;
+      E = (E - 2ll * r * xSum % mod - 2ll * c * ySum % mod) % mod;
+      if (E < 0) E += mod;
+      E = E * inv(p - 1) % mod;
+      ans[r][c] = E;
+    }
+    for (int i = p; i <= np; i++) {
+      long long r = a[i].r, c = a[i].c;
+      sqSum = (sqSum + r * r % mod + c * c % mod) % mod;
+      eSum = (eSum + ans[r][c]) % mod;
+      xSum = (xSum + r) % mod;
+      ySum = (ySum + c) % mod;
+    }
+    p = np + 1;
+  }
+
+  check_main_loop_invariant(uniqueValueCount); // Check for excessive accumulation
+
+  printf("%lld\n", ans[x0][y0]);
+  return 0;
+}
+```
+
+### Explanation of Inserted Checks
+
+- **Power Function Invariant:** The check is placed inside the `power` function to detect excessive invocations.
+- **Sort Invariant:** The check is placed before the sort operation to evaluate performance impact based on element count.
+- **Main Loop Invariant:** The check is placed after the loop processing to evaluate performance impact from accumulated costs.
+
