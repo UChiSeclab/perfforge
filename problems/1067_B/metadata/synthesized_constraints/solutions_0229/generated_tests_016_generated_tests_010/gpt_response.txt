@@ -1,0 +1,179 @@
+=== Invariants Response ===
+To diagnose the performance issue and derive performance-characterizing invariants, we will go through the analysis in two phases as described:
+
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+1. **Hit Count Analysis:**
+   - Notable differences are observed in lines within the loop starting at line 14. Specifically:
+     - The loop on line 7 iterates 33 times for the slow input and just once for the fast input.
+     - The loop on line 16 and its condition checks on lines 17-20 iterate significantly more often for the slow input.
+     - The nested loop starting at line 28 and its body (lines 29-36) are also heavily executed for the slow input.
+
+2. **Code Behavior Analysis:**
+   - The line hit counts suggest that the bulk of the work is being done in the loops that check for degree-1 vertices and process parents of such vertices. These loops are central to the algorithm's performance, particularly when lines 34-36 are called multiple times, indicating frequent modification of the `deg` structure.
+
+3. **Data Structure Interaction:**
+   - The `unordered_map deg` is modified frequently, especially when multiple vertices are removed (lines 34-36). This repeated modification can be costly, particularly if the map becomes large.
+
+4. **Condition Analysis:**
+   - The code appears to iterate over the tree and attempt to process it in a layer-by-layer (or level-by-level) manner, stopping when certain conditions are met. The nested loop involvement when processing `deg` and `parents` maps suggests a potential nested complexity, which can lead to performance issues.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on the analysis, here are the performance-characterizing invariants:
+
+1. **Invariant on Nested Processing of Degree-1 Nodes:**
+   - **Natural Language Description:** "If the input graph has a large number of degree-1 vertices attached to the same parent node across multiple levels, the program may enter a slow path due to repeated processing and removal of these vertices."
+   - **Suggested Thresholds:** A tree where a significant portion (e.g., more than 50%) of nodes are degree-1 and require processing as described may lead to performance degradation. Given the tree size constraint \( n \leq 100,000 \), this could involve thousands of such vertices.
+
+2. **Invariant on Frequent Map Modifications:**
+   - **Natural Language Description:** "When the unordered map representing the graph structure (`deg`) is frequently modified by adding and removing nodes in a nested loop, performance may degrade due to high overhead in managing these dynamic changes."
+   - **Suggested Thresholds:** If the total number of operations (insertions/removals) exceeds several times the number of nodes, inefficiencies may occur. For instance, if operations exceed \( 5n \), it might indicate a performance issue.
+
+3. **Invariant on Iterative Depth:**
+   - **Natural Language Description:** "If the algorithm requires deep iterative processing of graph levels (beyond depth 10), it may enter a performance bottleneck due to excessive loop iterations."
+   - **Suggested Thresholds:** If the number of levels processed (variable `levels`) exceeds 10, combined with complex operations on each level, performance may degrade.
+
+These invariants highlight conditions under which the program is likely to slow down, abstracted from specific inputs and aligned with the problem constraints.
+
+=== Checker Response ===
+Let's proceed with Phase 3 first, where we will implement the natural language invariants as runtime checks in C++.
+
+### Phase 3: Implementing the Natural Language Invariants in C++
+
+Here are the C++ code snippets implementing the performance-characterizing invariants derived earlier:
+
+1. **Invariant on Nested Processing of Degree-1 Nodes:**
+   - **C++ Implementation:**
+   ```cpp
+   void check_nested_degree1_invariant(const unordered_map<int, unordered_set<int>>& deg) {
+       int degree1_count = 0;
+       for (const auto& entry : deg) {
+           if (entry.second.size() == 1) {
+               ++degree1_count;
+           }
+       }
+       if (degree1_count > deg.size() / 2) { // If more than 50% are degree-1
+           cerr << "Warning: Performance bottleneck condition triggered - excessive degree-1 node processing!" << endl;
+           abort();
+       }
+   }
+   ```
+
+2. **Invariant on Frequent Map Modifications:**
+   - **C++ Implementation:**
+   ```cpp
+   void check_frequent_modifications_invariant(int operations, int n) {
+       if (operations > 5 * n) { // Arbitrarily setting a threshold of 5 times the number of nodes
+           cerr << "Warning: Performance bottleneck condition triggered - frequent modifications in data structure!" << endl;
+           abort();
+       }
+   }
+   ```
+
+3. **Invariant on Iterative Depth:**
+   - **C++ Implementation:**
+   ```cpp
+   void check_iterative_depth_invariant(int levels) {
+       if (levels > 10) { // More than 10 levels of processing
+           cerr << "Warning: Performance bottleneck condition triggered - deep iterative processing!" << endl;
+           abort();
+       }
+   }
+   ```
+
+### Phase 4: Integrating the Checkers into the Original Program
+
+Let's integrate these checkers at appropriate points in the original C++ code.
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+void check_nested_degree1_invariant(const unordered_map<int, unordered_set<int>>& deg) {
+    int degree1_count = 0;
+    for (const auto& entry : deg) {
+        if (entry.second.size() == 1) {
+            ++degree1_count;
+        }
+    }
+    if (degree1_count > deg.size() / 2) { // If more than 50% are degree-1
+        cerr << "Warning: Performance bottleneck condition triggered - excessive degree-1 node processing!" << endl;
+        abort();
+    }
+}
+
+void check_frequent_modifications_invariant(int operations, int n) {
+    if (operations > 5 * n) { // Arbitrarily setting a threshold of 5 times the number of nodes
+        cerr << "Warning: Performance bottleneck condition triggered - frequent modifications in data structure!" << endl;
+        abort();
+    }
+}
+
+void check_iterative_depth_invariant(int levels) {
+    if (levels > 10) { // More than 10 levels of processing
+        cerr << "Warning: Performance bottleneck condition triggered - deep iterative processing!" << endl;
+        abort();
+    }
+}
+
+int main() {
+    int n, k;
+    cin >> n >> k;
+    unordered_map<int, unordered_set<int>> deg;
+    int modification_count = 0; // To track the number of modifications
+
+    for (int i = 0; i < n - 1; ++i) {
+        int a, b;
+        cin >> a >> b;
+        deg[a].insert(b);
+        deg[b].insert(a);
+    }
+
+    check_nested_degree1_invariant(deg); // Check invariant after input
+
+    int levels = 1;
+    while (levels <= 11) {
+        unordered_map<int, unordered_set<int>> parents;
+        for (auto& p : deg) {
+            int size = p.second.size();
+            if (size == 1) {
+                int parent = *p.second.begin();
+                parents[parent].insert(p.first);
+            }
+        }
+        if (parents.size() == 1 && parents.begin()->second.size() > 2 &&
+            parents.begin()->second.size() + 1 == deg.size()) {
+            cout << ((levels == k) ? "Yes" : "No") << endl;
+            return 0;
+        }
+        for (auto& p : parents) {
+            int size = p.second.size();
+            if (size < 3) {
+                cout << "No" << endl;
+                return 0;
+            }
+            for (auto& child : p.second) {
+                deg.erase(child);
+                deg[p.first].erase(child);
+                modification_count += 2; // Two modifications per removal
+            }
+        }
+        ++levels;
+        check_iterative_depth_invariant(levels); // Check depth after each level
+    }
+
+    check_frequent_modifications_invariant(modification_count, n); // Check modifications after processing
+
+    cout << ((levels == k) ? "Yes" : "No") << endl;
+    return 0;
+}
+```
+
+### Explanation
+
+- **Degree-1 Node Check**: Added after reading the initial graph to ensure we're not starting with too many degree-1 nodes.
+- **Modification Check**: Placed after processing to ensure that we aren't excessively modifying the `deg` structure.
+- **Iterative Depth Check**: Inserted within the loop to catch excessive iterations. 
+
+These checks help identify performance bottlenecks during execution, allowing for easier diagnosis and debugging.
