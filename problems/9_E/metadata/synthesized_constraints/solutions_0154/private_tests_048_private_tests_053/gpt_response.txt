@@ -1,0 +1,207 @@
+=== Invariants Response ===
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+From the hit count data, we can identify several areas in the code that behave differently between the slow and fast inputs:
+
+1. **`dfs` Function (Lines 8 to 18)**:
+   - With the slow input, the `dfs` function is called 2,450 times (line 15) compared to 0 times with the fast input.
+   - The loop inside `dfs` (line 10) is executed 249,900 times for the slow input versus just 6 times for the fast input.
+
+2. **`check` Function (Lines 19 to 34)**:
+   - This function is called 1,276 times for the slow input as opposed to just once for the fast input.
+   - The loop inside `check` (line 20) runs 24,699 times for the slow input compared to 3 times for the fast input.
+
+3. **Nested Loop in `main` Function (Lines 58 to 75)**:
+   - The nested loop starting at line 58 is executed 1,325 times for the slow input, resulting in corresponding calls to `check` 1,275 times (line 64).
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+1. **High Recursion Depth and Search Space in DFS**:
+   - Natural language description: "If the graph contains a sparse connectivity with many disconnected components or isolated vertices, the `dfs` function may be called recursively numerous times, significantly slowing down the execution."
+   - Explanation: The `dfs` function's frequent invocation indicates a potential slowdown due to exploring multiple disconnected regions or components in the graph, leading to deep recursion.
+
+2. **Repeated Execution of the Check Function**:
+   - Natural language description: "If the graph initially lacks sufficient connectivity to form a single cycle covering all vertices, the `check` function will be invoked repeatedly, as additional edges are considered multiple times, increasing computation time."
+   - Explanation: The `check` function assesses graph properties, and its high invocation count suggests that the graph remains unsatisfactory for forming a single cycle. The repeated attempts to add edges (and check feasibility) contribute to the slowdown.
+
+3. **Large Number of Iterations in Nested Loops**:
+   - Natural language description: "When the number of vertices is large, the nested loops attempt numerous edge combinations, resulting in repeated checks of graph conditions, which can drastically slow down the program."
+   - Explanation: The nested loops in the main function explore potential edge additions. The larger the number of vertices, the more combinations are tried, leading to excessive checks, particularly when existing edges do not quickly lead to a solution.
+
+### Conclusion
+
+These performance-characterizing invariants give insight into why the program slows down under specific conditions. The focus is on graph connectivity and structure rather than just input size, as even with constraints like \(n \leq 50\), insufficient connectivity or structures requiring excessive edge checks can lead to performance bottlenecks.
+
+=== Checker Response ===
+### Phase 3: Implementing the Invariants as Checkers in C++
+
+Based on the performance-characterizing invariants derived in natural language, here are the C++ checkers:
+
+1. **High Recursion Depth and Search Space in DFS**:
+   
+```cpp
+void check_dfs_recursion_depth(int depth, int threshold) {
+    if (depth > threshold) {
+        cerr << "Warning: Performance bottleneck due to high DFS recursion depth!" << endl;
+        abort();
+    }
+}
+```
+
+2. **Repeated Execution of the Check Function**:
+   
+```cpp
+void check_repeated_checks(int checkCount, int threshold) {
+    if (checkCount > threshold) {
+        cerr << "Warning: Performance bottleneck due to repeated execution of the check function!" << endl;
+        abort();
+    }
+}
+```
+
+3. **Large Number of Iterations in Nested Loops**:
+
+```cpp
+void check_nested_loop_iterations(int vertexCount, int edgeCount) {
+    // Assuming a threshold based on some plausible heavy iteration limit
+    if (vertexCount * vertexCount > 2500) {
+        cerr << "Warning: Performance bottleneck due to large number of nested loop iterations!" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrating Checkers into the Original Program
+
+Here is the instrumented C++ code with the integrated checkers:
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+int g[51][51];
+bool vis[51];
+int deg[51];
+int n, m;
+bool has_cir;
+
+// Checker functions for performance bottlenecks
+void check_dfs_recursion_depth(int depth, int threshold) {
+    if (depth > threshold) {
+        cerr << "Warning: Performance bottleneck due to high DFS recursion depth!" << endl;
+        abort();
+    }
+}
+
+void check_repeated_checks(int checkCount, int threshold) {
+    if (checkCount > threshold) {
+        cerr << "Warning: Performance bottleneck due to repeated execution of the check function!" << endl;
+        abort();
+    }
+}
+
+void check_nested_loop_iterations(int vertexCount, int edgeCount) {
+    if (vertexCount * vertexCount > 2500) {
+        cerr << "Warning: Performance bottleneck due to large number of nested loop iterations!" << endl;
+        abort();
+    }
+}
+
+void dfs(int u, int f, int depth) {
+    vis[u] = true;
+    
+    // Check for high recursion depth
+    check_dfs_recursion_depth(depth, 50); // Example threshold
+
+    for (int i = 1; i <= n; i++) {
+        if (g[u][i] && i != f || g[u][i] >= 2) {
+            if (vis[i])
+                has_cir = true;
+            else
+                dfs(i, u, depth + 1);
+        }
+    }
+}
+
+bool check() {
+    // Track number of times 'check' is called
+    static int checkCount = 0;
+    checkCount++;
+
+    // Check for excessive repeated calls
+    check_repeated_checks(checkCount, 1000); // Example threshold
+
+    for (int i = 1; i <= n; i++) {
+        if (deg[i] > 2) return false;
+    }
+    int comp = 0;
+    memset(vis, false, sizeof(vis));
+    has_cir = false;
+    for (int i = 1; i <= n; i++) {
+        if (!vis[i]) {
+            comp++;
+            dfs(i, -1, 1); // Initial recursion depth
+        }
+    }
+    if (comp > 1 && has_cir) return false;
+    return true;
+}
+
+int main() {
+    while (scanf("%d%d", &n, &m) != EOF) {
+
+        // Check for large number of iterations before heavy nested loops
+        check_nested_loop_iterations(n, m);
+
+        if (n == 2 && m == 0) {
+            printf("YES\n2\n");
+            printf("1 2\n1 2\n");
+            continue;
+        }
+        memset(g, 0, sizeof(g));
+        memset(deg, 0, sizeof(deg));
+        int a, b;
+        for (int i = 0; i < m; i++) {
+            scanf("%d%d", &a, &b);
+            g[a][b]++;
+            g[b][a]++;
+            deg[a]++;
+            deg[b]++;
+        }
+        if (!check()) {
+            printf("NO\n");
+        } else {
+            vector<int> a, b;
+            printf("YES\n");
+            printf("%d\n", n - m);
+            for (int i = 1; i <= n; i++) {
+                for (int j = i; j <= n; j++) {
+                    g[i][j]++;
+                    g[j][i]++;
+                    deg[i]++;
+                    deg[j]++;
+                    if (check()) {
+                        a.push_back(i);
+                        b.push_back(j);
+                    } else {
+                        deg[i]--;
+                        deg[j]--;
+                        g[i][j]--;
+                        g[j][i]--;
+                    }
+                }
+            }
+            for (int i = 0; i < a.size(); i++) printf("%d %d\n", a[i], b[i]);
+        }
+    }
+    return 0;
+}
+```
+
+### Explanation:
+
+- **`check_dfs_recursion_depth`**: This checker is called inside the `dfs` function to detect recursion exceeding a certain depth during traversal.
+- **`check_repeated_checks`**: This checker monitors the frequency of calls to the `check` function and warns if it exceeds a threshold.
+- **`check_nested_loop_iterations`**: This is placed before the nested loops that attempt to add edges, preventing excessive iterations based on the number of vertices. 
+
+These checkers provide runtime alerts for conditions that may lead to performance bottlenecks, assisting in debugging and optimization efforts.

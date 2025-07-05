@@ -1,0 +1,152 @@
+=== Invariants Response ===
+To diagnose the performance bottleneck in the provided C code, we need to analyze the differences in line hit counts between the slow and fast runs. Here's how we can proceed with the analysis and derive performance-characterizing invariants.
+
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+1. **Comparison of Line-Level Hit Counts:**
+   - The most significant difference in hit counts between the slow and fast inputs occurs at the loop starting on line 7: `for (int i = 2; i <= n; i++)`.
+   - For the slow input, this loop iterates 149,196 times, while for the fast input, it iterates only once.
+
+2. **Pinpointing Significant Lines:**
+   - Line 7-10 is where the largest discrepancy occurs. This loop checks each integer `i` to find the smallest divisor of `n`, which is expensive when `n` is a large prime or nearly prime number.
+
+3. **Interaction with Data Structures and Loops:**
+   - The loop from line 7 to line 10 is effectively seeking the smallest divisor greater than 1 (i.e., `f(n)`). If `n` is prime, the loop runs until it reaches `n`, resulting in a time complexity of O(n).
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on the analysis above, we can generate natural language statements that describe conditions under which the program enters a slow path:
+
+1. **Invariant #1: Prime Number Detection**
+   - **Natural Language Description:** "The code significantly slows down when `n` is a prime number or nearly prime, causing the divisor-search loop to iterate up to `n` times. This is particularly true when `n` is large, close to the upper constraint."
+   - **Explanation:** For prime numbers, the smallest divisor (other than 1) is the number itself, leading to the loop executing for all numbers from 2 up to `n`.
+
+2. **Invariant #2: Loop Execution and Large n**
+   - **Natural Language Description:** "If `n` is large and no small divisors (other than 1) exist, the performance may degrade due to excessive iterations in the divisor-search loop."
+   - **Explanation:** This condition captures scenarios where `n` is not itself a prime but is composed of large prime factors, leading to extensive looping.
+
+### Conclusion
+
+The main performance bottleneck arises from the loop that searches for the smallest divisor. The performance degrades notably when `n` is a prime or nearly prime number, especially when `n` is large. This results in the loop iterating almost `n` times, leading to slow performance. Therefore, careful handling or an optimized algorithm for finding the smallest divisor could mitigate this issue, particularly for large values of `n`.
+
+=== Checker Response ===
+### Phase 3: Implementing Performance-Characterizing Invariants in C++
+
+Below are the checker functions corresponding to the two performance-characterizing invariants identified previously:
+
+1. **Invariant #1: Prime Number Detection**
+   - This invariant checks if a number `n` is prime, which may lead to performance bottlenecks as it requires iterating up to `n` to find its smallest divisor.
+
+```cpp
+void check_prime_invariant(unsigned long long int n) {
+    bool isPrime = true;
+    if (n < 2) isPrime = false;
+    for (unsigned long long int i = 2; i * i <= n; ++i) {
+        if (n % i == 0) {
+            isPrime = false;
+            break;
+        }
+    }
+    if (isPrime) {
+        cerr << "Warning: Performance bottleneck condition triggered - number is prime, long loop expected!" << endl;
+        abort();
+    }
+}
+```
+
+2. **Invariant #2: Loop Execution and Large n**
+   - This invariant detects when `n` lacks small divisors, leading to excessive loop iterations.
+
+```cpp
+void check_large_n_invariant(unsigned long long int n) {
+    // Presence of small divisors would let the loop exit early
+    bool hasSmallDivisor = false;
+    for (unsigned long long int i = 2; i <= sqrt(n); ++i) {
+        if (n % i == 0) {
+            hasSmallDivisor = true;
+            break;
+        }
+    }
+    if (!hasSmallDivisor) {
+        cerr << "Warning: Performance bottleneck condition triggered - large n with no small divisors!" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrating Checks into the Program
+
+Now we will integrate these checks into the provided C++ program. We'll place the checks after reading inputs and before entering the expensive loop to ensure they do not affect performance within the loop.
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+// Function to check if n is prime, which could lead to performance issues
+void check_prime_invariant(unsigned long long int n) {
+    bool isPrime = true;
+    if (n < 2) isPrime = false;
+    for (unsigned long long int i = 2; i * i <= n; ++i) {
+        if (n % i == 0) {
+            isPrime = false;
+            break;
+        }
+    }
+    if (isPrime) {
+        cerr << "Warning: Performance bottleneck condition triggered - number is prime, long loop expected!" << endl;
+        abort();
+    }
+}
+
+// Function to check for large n that might not have small divisors
+void check_large_n_invariant(unsigned long long int n) {
+    bool hasSmallDivisor = false;
+    for (unsigned long long int i = 2; i <= sqrt(n); ++i) {
+        if (n % i == 0) {
+            hasSmallDivisor = true;
+            break;
+        }
+    }
+    if (!hasSmallDivisor) {
+        cerr << "Warning: Performance bottleneck condition triggered - large n with no small divisors!" << endl;
+        abort();
+    }
+}
+
+void solve() {
+    unsigned long long int n, k;
+    cin >> n >> k;
+
+    // Check for conditions that might trigger performance bottlenecks
+    check_prime_invariant(n);
+    check_large_n_invariant(n); 
+
+    unsigned long long int temp = -1;
+    for (int i = 2; i <= n; i++) {
+        if (n % i == 0) {
+            temp = i;
+            break;
+        }
+    }
+    if (n & 1) {
+        n = n + temp;
+        k--;
+    }
+    cout << (n + k * 2) << endl;
+}
+
+int main() {
+    ios_base::sync_with_stdio(0);
+    cin.tie(0);
+    cout.tie(0);
+    unsigned long long int test;
+    cin >> test;
+    while (test--) solve();
+    return 0;
+}
+```
+
+### Explanation
+
+- **Placement of Checks:** Both checks are strategically placed after reading `n` input values and before entering the main loop. This ensures that if a problematic input is detected, the program will terminate before entering a potentially long-running loop.
+- **Check Functions:** Each invariant is encapsulated in a function that alerts if potential performance bottlenecks are detected. They use `cerr` and `abort()` to report and halt execution if the condition is met, helping testers or fuzzers identify problematic cases.
