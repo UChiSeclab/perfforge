@@ -1,0 +1,155 @@
+=== Invariants Response ===
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+**1. Line-level Hit Count Comparison:**
+- The primary difference in hit counts between the fast and slow runs occurs within the `teste` function, specifically inside the nested loop structure.
+- The `for` loop at line 7 and the `while` loop at line 9 are hit significantly more in the slow input compared to the fast input.
+
+**2. Pinpointing Inefficient Code:**
+- **Line 7:** This outer loop iterates over all accumulators. Given the slow input has more accumulators than the fast input, the loop's high iteration count is expected but not problematic on its own.
+- **Line 9:** The `while` loop is heavily hit in the slow input, indicating potential inefficiencies. This loop continues to execute as long as `qt` (the energy needed to equalize) is positive, suggesting an issue with how energy is being transferred and the convergence to a balanced state.
+- **Line 11:** The condition checks and transfers continue here and contribute to the excessive hit counts, implying that accumulators have a hard time reaching equilibrium, especially with certain energy configurations.
+
+**3. Interaction with Data Structures and Input:**
+- The function's inefficiency stems from the nested loop repeatedly adjusting accumulators in scenarios where they are far from equilibrium.
+- The input constraints (e.g., more accumulators with diverse energy levels) exacerbate the problem as energy must be transferred multiple times, often inefficiently due to losses.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+**1. Natural Language Performance Invariants:**
+
+- **Invariant 1:** "If the number of accumulators (`n`) is large and their initial energy levels vary widely, the code may enter a slow path due to excessive iterations needed to balance energy across accumulators."
+
+- **Invariant 2:** "When the percentage of energy loss (`k`) during transfer is high, the efficiency of energy redistribution decreases, potentially leading to more iterations and slower convergence to equilibrium."
+
+- **Invariant 3:** "If initial energy levels include extremely high or low values compared to others, the system may require more transfers to reach a balanced state, slowing down the process."
+
+**2. Avoid Specific Numeric Values:**
+- These invariants abstract away from specific input values, focusing instead on conditions like high `n`, large energy variance, and high loss percentage `k`.
+
+**3. Ensure Broad Utility:**
+- By focusing on general conditions such as variance in initial energy and transfer efficiency, these invariants are applicable to various input scenarios within the problem's constraints (like `n ≤ 10,000`).
+
+**4. Additional Considerations:**
+- These invariants can guide the design of checks or conditions to ensure the program doesn't unnecessarily enter these slow paths, aiding a fuzzer in identifying performance bottlenecks.
+
+=== Checker Response ===
+### Phase 3: Implementing Checker Code in C++
+
+Below are the C++ checker functions based on the previously derived performance invariants:
+
+```cpp
+void check_large_accumulators_invariant(int n) {
+    // Check if the number of accumulators is large
+    if (n > 5000) { // arbitrary threshold for large number of accumulators
+        cerr << "Warning: Performance bottleneck condition triggered - large number of accumulators!" << endl;
+        abort();
+    }
+}
+
+void check_energy_variance_invariant(const vector<double>& v) {
+    // Check if initial energy levels vary widely
+    double max_energy = *max_element(v.begin(), v.end());
+    double min_energy = *min_element(v.begin(), v.end());
+    if ((max_energy - min_energy) > 800) { // arbitrary threshold for energy variance
+        cerr << "Warning: Performance bottleneck condition triggered - high variance in initial energy levels!" << endl;
+        abort();
+    }
+}
+
+void check_high_loss_percentage_invariant(int k) {
+    // Check if the loss percentage during transfer is high
+    if (k > 75) { // arbitrary threshold for high percentage of loss
+        cerr << "Warning: Performance bottleneck condition triggered - high percentage of energy loss!" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrating Checkers into the Original Program
+
+The following is the instrumented C++ program with integrated checker functions:
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+// Checker functions based on performance-characterizing invariants
+void check_large_accumulators_invariant(int n) {
+    if (n > 5000) {
+        cerr << "Warning: Performance bottleneck condition triggered - large number of accumulators!" << endl;
+        abort();
+    }
+}
+
+void check_energy_variance_invariant(const vector<double>& v) {
+    double max_energy = *max_element(v.begin(), v.end());
+    double min_energy = *min_element(v.begin(), v.end());
+    if ((max_energy - min_energy) > 800) {
+        cerr << "Warning: Performance bottleneck condition triggered - high variance in initial energy levels!" << endl;
+        abort();
+    }
+}
+
+void check_high_loss_percentage_invariant(int k) {
+    if (k > 75) {
+        cerr << "Warning: Performance bottleneck condition triggered - high percentage of energy loss!" << endl;
+        abort();
+    }
+}
+
+bool teste(vector<double> v, double meio, int k) {
+    int source = 1;
+    for (int i = 0; i < v.size(); i++) {
+        double qt = ((meio - v[i]) * 100) / k;
+        while (qt > 0) {
+            if (source == v.size()) return false;
+            if (v[source] > meio) {
+                double aux = min({qt, v[source] - meio});
+                qt -= aux;
+                v[source] -= aux;
+            }
+            if (qt > 0) source++;
+        }
+    }
+    return true;
+}
+
+int main() {
+    ios_base::sync_with_stdio(0);
+    cin.tie(0);
+    int n, k;
+    cin >> n >> k;
+
+    // Perform checks based on invariants
+    check_large_accumulators_invariant(n);
+    check_high_loss_percentage_invariant(k);
+
+    k = 100 - k;
+    vector<double> v(n);
+    for (int i = 0; i < n; i++) cin >> v[i];
+
+    // Perform variance check after reading energy levels
+    check_energy_variance_invariant(v);
+
+    sort(v.begin(), v.end());
+    double l = 0, r = 1e8, meio, res;
+    for (int i = 0; i < 1000; i++) {
+        meio = (l + r) / 2;
+        if (teste(v, meio, k)) {
+            res = meio;
+            l = meio;
+        } else
+            r = meio;
+    }
+    cout << fixed << setprecision(9) << res << '\n';
+    return 0;
+}
+```
+
+### Explanation:
+- **Check for Large Number of Accumulators:** This is placed immediately after reading the input values to catch scenarios with too many accumulators.
+- **Check for High Energy Variance:** After the energy levels are read, this check ensures there's no high variance that could slow down convergence.
+- **Check for High Loss Percentage:** Placed right after reading the loss percentage to warn about potential inefficiencies with high energy losses. 
+
+This instrumented code now includes runtime checks that alert users to potential performance bottlenecks, helping identify slow execution paths in a broader range of input scenarios.

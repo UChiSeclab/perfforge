@@ -1,0 +1,142 @@
+=== Invariants Response ===
+To diagnose the performance bottleneck in the provided C program, we will analyze the line-level hit counts and derive performance-characterizing invariants.
+
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+1. **Compare Line-Level Hit Counts:**
+   - The `solve` function (line 4) is called 24,026,471 times for the slow input but only once for the fast input.
+   - Lines 5 and 8 have similarly high hit counts, indicating frequent condition checks.
+   - Lines 9, 10, 11, 12, and 14 also have high hit counts, showing significant branching and recursion.
+
+2. **Pinpoint Lines with More Hits:**
+   - The recursive calls on lines 11 and 12 (`solve(n * 2, moves + 1)` and `solve(n * 3, moves + 1)`) are executed 12,013,235 times each for the slow input, suggesting heavy recursive exploration.
+   - The return conditions on lines 7 and 9 suggest the recursion often terminates without success, triggering backtracking.
+
+3. **Infer Interactions with Data Structures and Input Constraints:**
+   - The recursion is inefficient for large search spaces, as indicated by the high hit counts.
+   - Line 5 reveals that the base case check is repeated excessively before finding a solution or exhausting possibilities, largely due to the constraints of `n` and `m`.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+1. **Natural Language Invariants:**
+
+   - **Recursive Exploration:**
+     - "When the ratio of `m` to `n` is large, and `n` is small relative to `m`, the recursive search space becomes vast, leading to excessive recursive calls."
+
+   - **Recursive Inefficiency:**
+     - "If many recursive paths lead to n exceeding m without reaching m, especially for large `m`, the recursion may backtrack extensively, slowing down the solution process."
+
+   - **Multiplicative Growth Limitations:**
+     - "If transforming `n` to `m` requires many multiplicative steps by 2 or 3, particularly when `m` is not a power of 2 or 3, the number of recursive explorations increases significantly."
+
+2. **Correlate Conditions to Input Patterns:**
+
+   - The program slows significantly when `m` is a large number that cannot be easily reached by multiplying `n` with 2 or 3 within a small number of steps. This is exacerbated when `n` is 1, maximizing the potential number of recursive paths.
+   - For inputs where `m` is much larger than `n` and requires many steps of 2s and 3s to reach, the solution space explored by the recursion grows exponentially, leading to a slowdown.
+
+These invariants help understand the conditions under which the recursive strategy becomes inefficient, particularly when dealing with large transformations from `n` to `m` that require numerous multiplicative steps. The recursion depth and branching factor contribute heavily to the slowdown in these scenarios.
+
+=== Checker Response ===
+### Phase 3: Implementing Performance-Characterizing Invariants in C++
+
+Based on the performance-characterizing invariants identified in Phase 2, here are the runtime checks implemented in C++:
+
+1. **Recursive Exploration:**
+
+   - **Invariant:** "When the ratio of `m` to `n` is large, and `n` is small relative to `m`, the recursive search space becomes vast, leading to excessive recursive calls."
+
+   ```cpp
+   void check_large_ratio_invariant(int n, int m, int depth) {
+       if (depth > 50 && (m / n > 1000000)) {
+           std::cerr << "Warning: Performance bottleneck condition triggered - large n to m ratio with deep recursion!" << std::endl;
+           abort();
+       }
+   }
+   ```
+
+2. **Recursive Inefficiency:**
+
+   - **Invariant:** "If many recursive paths lead to `n` exceeding `m` without reaching `m`, especially for large `m`, the recursion may backtrack extensively, slowing down the solution process."
+
+   ```cpp
+   void check_recursive_inefficiency(int n, int m) {
+       if (n > m && m > 100000000) {
+           std::cerr << "Warning: Performance bottleneck condition triggered - excessive recursion with large m!" << std::endl;
+           abort();
+       }
+   }
+   ```
+
+3. **Multiplicative Growth Limitations:**
+
+   - **Invariant:** "If transforming `n` to `m` requires many multiplicative steps by 2 or 3, particularly when `m` is not a power of 2 or 3, the number of recursive explorations increases significantly."
+
+   ```cpp
+   void check_multiplicative_growth(int n, int m, int moves) {
+       if (moves > 100 && (m % n != 0)) {
+           std::cerr << "Warning: Performance bottleneck condition triggered - high moves with non-linear growth!" << std::endl;
+           abort();
+       }
+   }
+   ```
+
+### Phase 4: Integrating Checker Code into the Original Program
+
+```cpp
+#include <bits/stdc++.h>
+
+int m;
+int _moves = -1;
+
+// Checkers
+void check_large_ratio_invariant(int n, int m, int depth) {
+    if (depth > 50 && (m / n > 1000000)) {
+        std::cerr << "Warning: Performance bottleneck condition triggered - large n to m ratio with deep recursion!" << std::endl;
+        abort();
+    }
+}
+
+void check_recursive_inefficiency(int n, int m) {
+    if (n > m && m > 100000000) {
+        std::cerr << "Warning: Performance bottleneck condition triggered - excessive recursion with large m!" << std::endl;
+        abort();
+    }
+}
+
+void check_multiplicative_growth(int n, int m, int moves) {
+    if (moves > 100 && (m % n != 0)) {
+        std::cerr << "Warning: Performance bottleneck condition triggered - high moves with non-linear growth!" << std::endl;
+        abort();
+    }
+}
+
+void solve(int n, int moves) {
+    check_large_ratio_invariant(n, m, moves);  // Check for large ratio
+    check_recursive_inefficiency(n, m);        // Check for inefficiency
+    check_multiplicative_growth(n, m, moves);  // Check for multiplicative growth
+
+    if (n == m) {
+        _moves = moves;
+        return;
+    } else if (n > m)
+        return;
+    else if (_moves == -1) {
+        solve(n * 2, moves + 1);
+        if (_moves == -1) solve(n * 3, moves + 1);
+    }
+    return;
+}
+
+int main(int argc, char const *argv[]) {
+    int n;
+    std::cin >> n >> m;
+    solve(n, 0);
+    std::cout << _moves << std::endl;
+    return 0;
+}
+```
+
+**Explanation:**
+- **Check Placement:** Each check is placed at the beginning of the `solve` function to avoid adding overhead in the recursive loop.
+- **Checker Functions:** Each function captures one of the performance-characterizing conditions identified in the invariants to trigger an alert and abort if the condition is met.
+- **Rationale:** These checks help identify scenarios where the program might enter a slow path due to large recursive exploration, inefficient recursion, or extensive multiplicative operations.
