@@ -1,0 +1,186 @@
+=== Invariants Response ===
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+Upon analyzing the line-level hit counts and comparing the slow and fast runs, the following observations can be made:
+
+1. **Function `next` (lines 5-12):** 
+   - The `next` function is called with a high frequency (24 times) during the slow input and not at all in the fast input. 
+   - This indicates that the generation of lexicographically next strings is a hotspot for the slow input.
+
+2. **Function `cmp` (lines 17-19):**
+   - This function is called a significantly higher number of times for the slow input (5818 times) compared to the fast input (714 times).
+   - Indicates frequent comparisons, likely due to sorting or repeated set operations.
+
+3. **Nested Loops (lines 29-33):**
+   - The loops are running more iterations in the slow case. The hit counts for line 32 (constructing substrings) are much higher in the slow input (2817) compared to the fast input (279).
+   - The `set<string> q` is populated with many more substrings for the slow input, leading to increased complexity in subsequent operations.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on the analysis of the code and execution patterns, the following performance-characterizing invariants are derived:
+
+1. **Invariant 1: Lexicographical Progression in `next` Function**
+   - **Natural Language Description:** 
+     - "When the set of substrings (`q`) generated is large and requires frequent updates, the function `next` is called repeatedly to generate the next possible string, significantly slowing down the execution."
+   - **Characterization:** 
+     - This situation is likely to occur when input titles have many substrings that are close in lexicographical order, causing `next` to be used frequently to find the next original title.
+
+2. **Invariant 2: High Rate of Substring Generation and Comparison**
+   - **Natural Language Description:** 
+     - "If the input strings are lengthy or diverse in character composition, the generation and comparison of substrings become computationally expensive, as indicated by increased hits on substring operations and the `cmp` function."
+   - **Characterization:** 
+     - This is particularly impactful when the input strings have a broad range of characters resulting in many distinct substrings.
+
+3. **Invariant 3: Large Substring Set Resulting in Intensive Sort**
+   - **Natural Language Description:** 
+     - "When the set `q` contains numerous substrings, the sorting operation required to find the lexicographically smallest original title becomes a performance bottleneck."
+   - **Characterization:** 
+     - This can be triggered when the titles have a high number of potential substrings, leading to extensive sorting and comparison.
+
+In summary, the slow execution path is primarily triggered by the extensive generation and manipulation of substrings, which leads to frequent calls to the `next` function and heavy use of sorting and comparisons. Given the constraints (n ≤ 30, title length ≤ 20), these invariants are broadly applicable within the problem's scope.
+
+=== Checker Response ===
+### Phase 3: Implement Checkers for Performance-Characterizing Invariants
+
+Here are the C++ checker implementations based on the natural language invariants derived previously:
+
+```cpp
+void check_next_function_usage(int usageCount) {
+    // This check detects excessive usage of the `next` function, indicating
+    // potential performance slowdown due to repeated generation of substrings.
+    if (usageCount > /* arbitrary threshold based on n and title length */ 100) {
+        cerr << "Warning: Performance bottleneck condition triggered - excessive calls to `next` function!" << endl;
+        abort();
+    }
+}
+
+void check_substring_set_size(int setSize) {
+    // This check monitors the size of the substring set `q`, which can grow large
+    // and cause sorting/comparison overhead.
+    if (setSize > /* arbitrary threshold proportional to n * average title length */ 1000) {
+        cerr << "Warning: Performance bottleneck condition triggered - substring set too large!" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrate and Propagate Checkers into the Original Program
+
+The following is the instrumented code with the checkers integrated appropriately:
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+namespace round170 {
+namespace B {
+
+inline string next(string a) {
+    for (int i = (int)a.size() - 1; i >= 0; --i) {
+        if (a[i] == 'z') {
+            a[i] = 'a';
+            if (i == 0) a = "a" + a;
+        } else {
+            ++a[i];
+            return a;
+        }
+    }
+    return a;
+}
+
+inline bool cmp(const string& a, const string& b) {
+    if (a.size() == b.size()) return a < b;
+    return a.size() < b.size();
+}
+
+void check_next_function_usage(int usageCount) {
+    // This check detects excessive usage of the `next` function, indicating
+    // potential performance slowdown due to repeated generation of substrings.
+    if (usageCount > 100) {  // Arbitrary threshold, considering constraints
+        cerr << "Warning: Performance bottleneck condition triggered - excessive calls to `next` function!" << endl;
+        abort();
+    }
+}
+
+void check_substring_set_size(int setSize) {
+    // This check monitors the size of the substring set `q`, which can grow large
+    // and cause sorting/comparison overhead.
+    if (setSize > 1000) {  // Arbitrary threshold, considering constraints
+        cerr << "Warning: Performance bottleneck condition triggered - substring set too large!" << endl;
+        abort();
+    }
+}
+
+int solve(istream& in) {
+    int n;
+    in >> n;
+    set<string> q;
+    string s;
+    string ans;
+
+    // Track usage count for the `next` function
+    int nextFunctionUsageCount = 0;
+
+    for (int i = 0; i < n; ++i) {
+        in >> s;
+        for (int j = 0; j < (int)s.size(); ++j)
+            for (int k = j + 1; k <= (int)s.size(); ++k) {
+                string t;
+                for (int z = j; z < k; ++z) t += s[z];
+                q.insert(t);
+            }
+    }
+
+    // Check the size of the substring set `q`
+    check_substring_set_size(q.size());
+
+    vector<string> v(q.begin(), q.end());
+    sort(v.begin(), v.end(), cmp);
+    int i = 0;
+    s = v[i];
+    if (s != "a")
+        ans = "a";
+    else {
+        for (++i; i < (int)v.size(); ++i) {
+            s = next(s);
+            nextFunctionUsageCount++;  // Increment usage count for `next` function
+            if (v[i] != s) {
+                ans = s;
+                break;
+            }
+        }
+        if (ans.empty()) {
+            ans = next(v.back());
+            nextFunctionUsageCount++;  // Increment usage count for `next` function
+        }
+    }
+
+    // Check the `next` function usage
+    check_next_function_usage(nextFunctionUsageCount);
+
+    cout << ans << endl;
+    return 999;
+}
+
+}  // namespace B
+}  // namespace round170
+
+int main() {
+    ios_base::sync_with_stdio(false);
+    int status = 0;
+    do {
+        status = round170::B::solve(cin);
+    } while (0);
+    return 0;
+}
+```
+
+### Explanation of Checker Integration
+
+1. **`check_next_function_usage`**: 
+   - Placed after the loop where `next` is used, it checks if the function is called excessively, indicating that the algorithm is stuck trying to find the next lexicographical string repeatedly.
+
+2. **`check_substring_set_size`**: 
+   - Executed after the substring generation, it monitors the size of the `q` set to ensure it doesn't grow too large, which would cause significant performance overhead during sorting and comparison.
+
+These checks are placed at points in the code where they can effectively detect potential bottlenecks without introducing significant overhead themselves.
