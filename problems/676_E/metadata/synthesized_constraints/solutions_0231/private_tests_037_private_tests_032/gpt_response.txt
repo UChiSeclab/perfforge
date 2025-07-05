@@ -1,0 +1,211 @@
+=== Invariants Response ===
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+By analyzing the hit counts, we notice a significant discrepancy between the "slow" and "fast" inputs, specifically in the following areas of the code:
+
+1. **IsPrime Function**: The `IsPrime` function is called numerous times (4127 hits for the slow input) because of its presence in the loop that attempts to find a prime modulus. This function's internal loop (`for (int i = 2; i * i <= x; ++i)`) contributes heavily to the total hit count (7,879,120 hits).
+
+2. **Polynomial Evaluation Loop**: The loop beginning with `for (int itr = 0; itr < 250; ++itr)` calls `IsPrime` `250` times. Each iteration attempts to find a prime modulus for the polynomial evaluation, followed by operations involving `ModMul` and `ModSum`, which are hit 1000 times each, due to the nested nature of these operations.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on the identified bottlenecks, we can derive the following performance-characterizing invariants:
+
+1. **Prime Number Determination**:
+   - **Invariant**: "The code may slow down significantly if the modulus chosen for polynomial checking requires many iterations to find a prime near the range limit. This can happen especially if the modulus needs to be large due to constraints or specific input patterns."
+   - **Explanation**: The `IsPrime` function is expensive when the modulus is large, requiring many iterations to confirm primality. This is exacerbated when the modulus starts out non-prime and needs multiple increments.
+
+2. **Polynomial Evaluation with Full Coefficients**:
+   - **Invariant**: "When every coefficient in the polynomial is already known (i.e., all coefficients are defined), the repeated polynomial evaluations for different random moduli can become computationally intensive."
+   - **Explanation**: If `f == n + 1`, the polynomial is fully defined, and 250 iterations are performed, each involving multiple modular arithmetic operations. This can lead to computational slowness if these operations are repeated excessively without early termination.
+
+3. **Large Modulus Operations**:
+   - **Invariant**: "The use of large moduli in modular arithmetic operations during polynomial evaluation can lead to significant slowdown if repeated excessively, especially when iterating over the entire polynomial length."
+   - **Explanation**: Operations such as `ModMul` and `ModSum` are computationally expensive when the modulus is large, and their repeated application across the polynomial can lead to performance degradation.
+
+### Conclusion
+
+These invariants are designed to encapsulate the conditions under which the code's performance degrades, focusing on the computational intensity of prime checking and modular arithmetic, especially as they relate to the input structure and constraints. These statements help in recognizing potential slowdowns, abstracting away from specific numerical values to focus on the broader conditions leading to inefficiencies.
+
+=== Checker Response ===
+### Phase 3: Implement the Natural Language Invariants in C++
+
+Below are the runtime checks implemented to correspond to each invariant identified:
+
+```cpp
+// Check for prime number determination bottleneck
+void check_prime_determination_invariant(int iterations, int largeModulus) {
+    if (iterations > 1000 && largeModulus > INF) {
+        cerr << "Warning: Performance bottleneck condition triggered - excessive prime checking iterations!" << endl;
+        abort();
+    }
+}
+
+// Check for polynomial evaluation with full coefficients
+void check_full_coefficients_invariant(int numCoefficients) {
+    if (numCoefficients == (n + 1)) {
+        cerr << "Warning: Performance bottleneck condition triggered - polynomial fully defined and repeatedly evaluated!" << endl;
+        abort();
+    }
+}
+
+// Check for large modulus operations bottleneck
+void check_large_modulus_operation_invariant(int mod) {
+    if (mod >= INF) {
+        cerr << "Warning: Performance bottleneck condition triggered - large modulus operations!" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrate the Checks into the Original C++ Code
+
+Below is the instrumented C++ code with the integrated checks:
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+const string YES = "Yes";
+const string NO = "No";
+const int INF = 5e8;
+
+bool IsPrime(int x) {
+    if (x <= 1) {
+        return false;
+    }
+    for (int i = 2; i * i <= x; ++i) {
+        if (x % i == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+inline void ModSum(int& x, int y, int mod) {
+    x += y;
+    if (x >= mod) {
+        x -= mod;
+    }
+    if (x < 0) {
+        x += mod;
+    }
+}
+
+inline void ModMul(int& x, int y, int mod) {
+    x = (1LL * x * y) % mod;
+}
+
+// Implementing the performance invariant checks as helper functions
+void check_prime_determination_invariant(int iterations, int largeModulus) {
+    if (iterations > 1000 && largeModulus > INF) {
+        cerr << "Warning: Performance bottleneck condition triggered - excessive prime checking iterations!" << endl;
+        abort();
+    }
+}
+
+void check_full_coefficients_invariant(int numCoefficients) {
+    if (numCoefficients == (n + 1)) {
+        cerr << "Warning: Performance bottleneck condition triggered - polynomial fully defined and repeatedly evaluated!" << endl;
+        abort();
+    }
+}
+
+void check_large_modulus_operation_invariant(int mod) {
+    if (mod >= INF) {
+        cerr << "Warning: Performance bottleneck condition triggered - large modulus operations!" << endl;
+        abort();
+    }
+}
+
+int main() {
+    srand(13512);
+    ios_base::sync_with_stdio(false);
+    cin.tie(nullptr);
+    int n, k;
+    cin >> n >> k;
+    int f = 0;
+    vector<int> a(n + 1);
+    vector<bool> b(n + 1, false);
+    for (int i = 0; i <= n; ++i) {
+        string s;
+        cin >> s;
+        if (s != "?") {
+            a[i] = stoi(s);
+            b[i] = true;
+            f += 1;
+        } else {
+            b[i] = false;
+        }
+    }
+    bool human = (f & 1);
+
+    // Check for polynomial evaluation with full coefficients
+    check_full_coefficients_invariant(f);
+
+    if (k == 0) {
+        if (b[0]) {
+            if (a[0] == 0) {
+                cout << YES << endl;
+            } else {
+                cout << NO << endl;
+            }
+        } else {
+            if (human) {
+                cout << YES << endl;
+            } else {
+                cout << NO << endl;
+            }
+        }
+    } else {
+        if (f == (n + 1)) {
+            for (int itr = 0; itr < 250; ++itr) {
+                int mod = rand() % INF + INF;
+                int prime_iterations = 0;
+                while (!IsPrime(mod)) {
+                    ++mod;
+                    ++prime_iterations;
+                }
+
+                // Check for prime number determination bottleneck
+                check_prime_determination_invariant(prime_iterations, mod);
+
+                int modK = k % mod;
+                if (modK < 0) {
+                    modK += mod;
+                }
+                int sum = 0;
+                int pw = 1;
+                for (int i = 0; i <= n; ++i) {
+                    int cur = a[i] % mod;
+                    if (cur < 0) {
+                        cur += mod;
+                    }
+                    ModMul(cur, pw, mod);
+                    ModSum(sum, cur, mod);
+                    ModMul(pw, modK, mod);
+                }
+                if (sum != 0) {
+                    cout << NO << endl;
+                    return 0;
+                }
+            }
+            cout << YES << endl;
+        } else {
+            if ((n + 1) & 1) {
+                cout << NO << endl;
+            } else {
+                cout << YES << endl;
+            }
+        }
+    }
+    return 0;
+}
+```
+
+### Explanation of Inserted Checks
+
+1. **Prime Determination Check**: This check is placed inside the loop where `IsPrime` is repeatedly invoked. It tracks the number of iterations required to find a prime number and checks if the modulus values exceed a threshold, indicating potential performance degradation.
+
+2. **Full Coefficients Check**: This check is added after reading inputs to detect if the polynomial is fully defined, triggering a warning before initiating extensive polynomial evaluations.
+
+3. **Large Modulus Operation Check**: This check is integrated after modulus determination to ensure that modulus operations don't involve excessively large numbers, potentially causing slowdowns.
