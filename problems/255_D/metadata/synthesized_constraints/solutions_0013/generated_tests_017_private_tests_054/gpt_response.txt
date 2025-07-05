@@ -1,0 +1,196 @@
+=== Invariants Response ===
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+#### Analysis of Hit Counts
+
+1. **Line 10** (`while (counter < c) {`):
+   - **Slow Input**: 41,363 hits
+   - **Fast Input**: 1 hit
+   - The main loop is executed significantly more times for the slow input, indicating that reaching the condition `counter < c` is much slower.
+
+2. **Line 49** (`while (xiterator < n && yiterator < y) {`):
+   - **Slow Input**: 855,469,565 hits
+   - **Fast Input**: 0 hits
+   - This while loop is executed an extraordinarily high number of times during the slow input.
+
+3. **Lines 50-53** (within the `bottomRight` quadrant processing):
+   - Similarly, lines 50 to 53 show a similar high count of execution, suggesting that the expansion logic in the `bottomRight` quadrant is a major contributor to the slowdown.
+
+4. **Line 64** (`while (xiterator > x && yiterator < n) {`):
+   - **Slow Input**: 2,562,614 hits
+   - **Fast Input**: 0 hits
+   - The loop in the `topRight` quadrant also shows significant execution but not as much as `bottomRight`.
+
+#### Inferences
+
+- The code is designed to simulate the spread of "on" cells over a grid starting from a single point. The expensive operations come from the while loops that continue expanding the reach across the grid.
+- The performance bottleneck predominantly occurs while processing the `bottomRight` quadrant, where the grid cells expand in a manner that results in high iteration counts.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Here are natural language statements that describe conditions under which the program likely enters a slow path:
+
+1. **Boundary Closeness Invariant**:
+   - "If the initial cell is near the boundary of a very large grid, the program may take significantly longer to fulfill the condition due to inefficient boundary checking."
+   - This is derived from the fact that being near the edge causes some quadrants to iterate longer, especially when `n` is large.
+
+2. **Expansion Direction Convergence Invariant**:
+   - "If the grid expansion predominantly occurs in a direction that has fewer adjacent cells to switch on, the time to reach the desired count can increase significantly."
+   - This relates to the way the cells are expanded and the high hit count in the `bottomRight` quadrant.
+
+3. **Quadrant Overlap Inefficiency Invariant**:
+   - "If multiple quadrants end up overlapping in their coverage, resulting in redundant counts, the spread may slow down as more checks are required in overlapping regions."
+   - This is observed in the uneven hit counts across different quadrants.
+
+These invariants are designed to capture potential future slow scenarios while adhering to the input constraints (e.g., large `n` values). They suggest that slowdown occurs due to inefficient processing in scenarios where part of the grid is near boundaries or when grid expansions overlap excessively.
+
+=== Checker Response ===
+Let's proceed with the task as outlined:
+
+### Phase 3: Implement the Natural Language Invariants in C++
+
+Here are the checker functions implemented based on the natural language invariants derived in Phase 2:
+
+```cpp
+void check_boundary_closeness_invariant(int n, int x, int y) {
+    // Check if the starting point is near the boundary in a large grid
+    if (n > 1000000 && (x <= 10 || x >= n - 10 || y <= 10 || y >= n - 10)) {
+        cerr << "Warning: Boundary closeness invariant triggered - initial point is near boundary in a large grid!" << endl;
+        abort();
+    }
+}
+
+void check_expansion_direction_convergence_invariant(int n, int x, int y) {
+    // Check if the expansion direction leads to inefficient coverage
+    if (n > 1000000 && (x <= 10 && y >= n - 10)) {
+        cerr << "Warning: Expansion direction convergence invariant triggered - inefficient expansion due to boundary proximity!" << endl;
+        abort();
+    }
+}
+
+void check_quadrant_overlap_inefficiency_invariant(int n, int x, int y) {
+    // Check if multiple quadrants might overlap redundantly
+    if (n > 1000000 && x <= n / 2 && y <= n / 2) {
+        cerr << "Warning: Quadrant overlap inefficiency invariant triggered - potential redundant coverage!" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrate Checkers into Original Program
+
+Here is the original C++ program with the checker functions integrated at appropriate points:
+
+```cpp
+#include <iostream>
+using namespace std;
+
+void check_boundary_closeness_invariant(int n, int x, int y) {
+    if (n > 1000000 && (x <= 10 || x >= n - 10 || y <= 10 || y >= n - 10)) {
+        cerr << "Warning: Boundary closeness invariant triggered - initial point is near boundary in a large grid!" << endl;
+        abort();
+    }
+}
+
+void check_expansion_direction_convergence_invariant(int n, int x, int y) {
+    if (n > 1000000 && (x <= 10 && y >= n - 10)) {
+        cerr << "Warning: Expansion direction convergence invariant triggered - inefficient expansion due to boundary proximity!" << endl;
+        abort();
+    }
+}
+
+void check_quadrant_overlap_inefficiency_invariant(int n, int x, int y) {
+    if (n > 1000000 && x <= n / 2 && y <= n / 2) {
+        cerr << "Warning: Quadrant overlap inefficiency invariant triggered - potential redundant coverage!" << endl;
+        abort();
+    }
+}
+
+int main(int argc, char const *argv[]) {
+    int n, x, y, c;
+    std::cin >> n >> x >> y >> c;
+    ++n;
+
+    // Inserted checkers to detect performance bottlenecks
+    check_boundary_closeness_invariant(n, x, y);
+    check_expansion_direction_convergence_invariant(n, x, y);
+    check_quadrant_overlap_inefficiency_invariant(n, x, y);
+
+    bool topLeft = true, topRight = true, bottomLeft = true, bottomRight = true;
+    int counter = 1, timer = 0, arm = 1, up = 0, left = 0, down = 0, right = 0;
+    int xiterator, yiterator;
+
+    while (counter < c) {
+        if (topLeft) {
+            xiterator = x - up;
+            yiterator = y + arm;
+            if (yiterator >= n) {
+                yiterator = n - 1;
+                ++up;
+                --xiterator;
+            }
+            while (xiterator > 0 && yiterator > y) {
+                if (xiterator == 1 && yiterator == n - 1) topLeft = false;
+                ++counter;
+                --xiterator;
+                --yiterator;
+            }
+        }
+        if (bottomLeft) {
+            xiterator = x - arm;
+            yiterator = y - left;
+            if (xiterator <= 0) {
+                xiterator = 1;
+                ++left;
+                --yiterator;
+            }
+            while (xiterator < x && yiterator > 0) {
+                if (xiterator == 1 && yiterator == 1) bottomLeft = false;
+                ++counter;
+                ++xiterator;
+                --yiterator;
+            }
+        }
+        if (bottomRight) {
+            xiterator = x + down;
+            yiterator = y - arm;
+            if (yiterator <= 0) {
+                yiterator = 1;
+                ++down;
+                ++xiterator;
+            }
+            while (xiterator < n && yiterator < y) {
+                if (xiterator == n - 1 && yiterator == 1) bottomRight = false;
+                ++counter;
+                ++xiterator;
+                ++yiterator;
+            }
+        }
+        if (topRight) {
+            xiterator = x + arm;
+            yiterator = y + right;
+            if (xiterator >= n) {
+                xiterator = n - 1;
+                ++right;
+                ++yiterator;
+            }
+            while (xiterator > x && yiterator < n) {
+                if (xiterator == n - 1 && yiterator == n - 1) topRight = false;
+                ++counter;
+                --xiterator;
+                ++yiterator;
+            }
+        }
+        ++arm;
+        ++timer;
+    }
+    std::cout << timer << endl;
+    return 0;
+}
+```
+
+### Explanation
+
+- **Checker placement**: The checks are placed right after input reading to ensure that they are evaluated before any significant processing occurs, avoiding performance degradation from constant checking inside loops.
+- **Thresholds and conditions**: The checkers use conditions such as proximity to the edges for large `n` values and potential overlaps, which were derived based on observed performance bottlenecks.
+- **Abort mechanism**: Each checker uses `abort()` to immediately halt execution if the condition triggers, aiding in early detection during fuzz testing or debugging.

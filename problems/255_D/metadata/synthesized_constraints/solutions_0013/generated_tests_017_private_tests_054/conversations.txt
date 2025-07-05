@@ -1,0 +1,731 @@
+system: You are a helpful assistant good at coding.
+
+user: (A) Context
+
+You are an experienced C software engineer focusing on performance bottlenecks. You have:
+1. A problem statement describing a task or algorithm (with constraints such as n <= 100).
+2. A C program that implements a solution to that problem.
+3. Two inputs: a “fast” input that completes quickly, and a “slow” input that takes much longer—both inputs have similar size/structure.
+4. Line-level hit counts for both runs, showing which lines get hit significantly more often on the slow input.
+
+Your goal is to diagnose why the program runs slowly for the slow input and derive conditions or invariants that capture what triggers this slowdown.
+
+(B) Tasks: Analyze the given code and generate performance-characterizing invariants in natural language
+
+Phase 1: Identify expensive or onefficient code segments. In this phase you are asked to,
+1. Compare line-level hit counts between the fast and slow runs.
+2. Pinpoint lines or functions that get significantly more hits under the slow input.
+3. Infer how these lines might be interacting with data structures, loops, recursion, etc., especially as they relate to the input constraints (e.g., n <= 100).
+
+Phase 2: Derive performance-characterizing invariants (natural language). In this phase you are asked to,
+1. Generate natural language statements that describe conditions under which the program likely enters a slow path.
+2. Avoid using specific numeric values from the slow input; abstract them into categories or thresholds. However, make sure those thresholds adhere to the input constraints of the problem.
+3. Correlate these conditions strongly to input patterns (e.g., “when n is close to 100 and there is a nested loop,” or “when a data structure is repeatedly sorted”).
+4. Ensure your statements are broad enough to catch possible future slow scenarios, but still reflect realistic triggers given the constraints (like n <= 100).
+
+Note that not all performance-characterizing invariants are about maximising input size. You may refer to the following examples for inspiration --- some maximising the input size, some not --- but do not simply replicate them exactly. Rather, use them as inspiration to infer and tailor performance-characterizing invariants tailored for the C code and problem statement you were asked to analize:
+
+Example Invariant #1:
+
+A potential slowdown arises when certain arrays or lists grow large, causing repeated operations. One way to detect this is to check if the size of a critical array arr (used in a nested loop) exceeds a broad threshold.
+
+Natural language description: “If arr is very large and used in nested loops, the code may repeat operations too many times.”
+
+Code implementing the natural language description:
+
+```cpp
+// Sample checker function
+void check_size_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: size_invariant triggered - array too large for nested loops" << endl;
+        abort();
+    }
+}
+
+// Usage in main or function
+int arrSize = arr.size();
+check_size_invariant(arrSize > 50000);
+```
+
+Example Invariant #2:
+
+Repeated sorting or searching on a data structure can degrade performance, especially if the data structure is large or if the sorting is called multiple times in a loop.
+
+Natural language description: “If a large portion of the code’s execution time is spent in sorting a data structure repeatedly, performance may degrade. Check if the data structure is frequently resorted or reprocessed when it has many elements.”
+
+Code implementing the natural language description:
+
+```cpp
+void check_sort_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: sort_invariant triggered - repeatedly sorting large data" << endl;
+        abort();
+    }
+}
+
+// After reading input or before sorting
+int elementCount = someDataStructure.size();
+check_sort_invariant(elementCount > 100000 && /* some condition indicating repeated sorts */);
+```
+
+Example Invariant #3:
+
+Recursion (e.g., graph traversal or the iterative version of it, recurssive dynamic programming, recurssive computation like computing the next Fibonacci number, etc.) can become expensive if it explores a large search space. A sign of this might be a high branching factor combined with a deep recursion depth.
+
+Natural language description: “If the recursion depth is likely to exceed a certain level or if many branches are processed at each recursive call, the computation may become very expensive.”
+
+```cpp
+void check_dfs_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: dfs_invariant triggered - high recursion depth or branching factor" << endl;
+        abort();
+    }
+}
+
+// Before calling dfs or inside setup
+check_dfs_invariant((maxDepthEstimate > 50) && (branchFactorEstimate > 10));
+```
+
+Example Invariant #4:
+
+Memory usage spikes or large matrix operations can slow down computation if array dimensions become too large. If the program initializes a 2D array based on input dimensions n and m, certain input combinations can trigger large memory footprints or nested loops over the entire matrix.
+
+Natural language description: “If n and m together exceed a threshold that implies large matrix computations, the program may slow significantly.”
+
+```cpp
+void check_matrix_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: matrix_invariant triggered - potentially large matrix operations" << endl;
+        abort();
+    }
+}
+
+// After reading n, m
+check_matrix_invariant(n * m > 1000000);
+```
+
+Example invariant #5:
+
+If a program runs an expensive function or heavy-weight code (e.g. memory allocation) repeatedly within a performance-critical loop or function, the overhead for calling that function can accumulate, slowing the program significantly.
+
+Natural langauge description: "If function foo is an expensive function to execute, and is called a large number of times in a loop or recursive function, the program may slow down significantly"
+
+```cpp
+void check_expensive_function_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: expensive function invariant triggered - excessive calls" << endl;
+        abort();
+    }
+}
+
+check_expensive_function_invariant(n > 1000000);  // arbitrary, but large threshold
+for (i = 0; i < n; ++i) { 
+    foo(); // expensive function
+}
+```
+
+(C) Output Requirements
+1. Provide a list of natural language performance invariants explaining under what conditions the code slows down.
+2. Do not mention or rely on exact values from the provided slow input.
+3. Use or suggest threshold values that align with problem constraints (e.g., n <= 100).
+4. The output should be a concise, descriptive set of statements about performance triggers.
+
+(D) Important Considerations
+1. Avoid hardcoding. Don’t rely solely on the exact values from the provided slow input; think in terms of categories or thresholds that lead to slow execution.
+2. Avoid checks inside tight loops. Place checks in a way that does not significantly degrade performance.
+3. Focus on fuzzer utility. The checks should help a fuzzer detect slow performance triggers by hitting these conditions.
+
+(E) Problem Statement
+
+Mr. Bender has a digital table of size n × n, each cell can be switched on or off. He wants the field to have at least c switched on squares. When this condition is fulfilled, Mr Bender will be happy.
+
+We'll consider the table rows numbered from top to bottom from 1 to n, and the columns — numbered from left to right from 1 to n. Initially there is exactly one switched on cell with coordinates (x, y) (x is the row number, y is the column number), and all other cells are switched off. Then each second we switch on the cells that are off but have the side-adjacent cells that are on.
+
+For a cell with coordinates (x, y) the side-adjacent cells are cells with coordinates (x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1).
+
+In how many seconds will Mr. Bender get happy?
+
+Input
+
+The first line contains four space-separated integers n, x, y, c (1 ≤ n, c ≤ 109; 1 ≤ x, y ≤ n; c ≤ n2).
+
+Output
+
+In a single line print a single integer — the answer to the problem.
+
+Examples
+
+Input
+
+6 4 3 1
+
+
+Output
+
+0
+
+
+Input
+
+9 3 8 10
+
+
+Output
+
+2
+
+Note
+
+Initially the first test has one painted cell, so the answer is 0. In the second test all events will go as is shown on the figure. <image>.
+
+(F) Program Solving the Problem Statement
+
+#include <bits/stdc++.h>
+using namespace std;
+int main(int argc, char const *argv[]) {
+  int n, x, y, c;
+  std::cin >> n >> x >> y >> c;
+  ++n;
+  bool topLeft = true, topRight = true, bottomLeft = true, bottomRight = true;
+  int counter = 1, timer = 0, arm = 1, up = 0, left = 0, down = 0, right = 0;
+  int xiterator, yiterator;
+  while (counter < c) {
+    if (topLeft) {
+      xiterator = x - up;
+      yiterator = y + arm;
+      if (yiterator >= n) {
+        yiterator = n - 1;
+        ++up;
+        --xiterator;
+      }
+      while (xiterator > 0 && yiterator > y) {
+        if (xiterator == 1 && yiterator == n - 1) topLeft = false;
+        ++counter;
+        --xiterator;
+        --yiterator;
+      }
+    }
+    if (bottomLeft) {
+      xiterator = x - arm;
+      yiterator = y - left;
+      if (xiterator <= 0) {
+        xiterator = 1;
+        ++left;
+        --yiterator;
+      }
+      while (xiterator < x && yiterator > 0) {
+        if (xiterator == 1 && yiterator == 1) bottomLeft = false;
+        ++counter;
+        ++xiterator;
+        --yiterator;
+      }
+    }
+    if (bottomRight) {
+      xiterator = x + down;
+      yiterator = y - arm;
+      if (yiterator <= 0) {
+        yiterator = 1;
+        ++down;
+        ++xiterator;
+      }
+      while (xiterator < n && yiterator < y) {
+        if (xiterator == n - 1 && yiterator == 1) bottomRight = false;
+        ++counter;
+        ++xiterator;
+        ++yiterator;
+      }
+    }
+    if (topRight) {
+      xiterator = x + arm;
+      yiterator = y + right;
+      if (xiterator >= n) {
+        xiterator = n - 1;
+        ++right;
+        ++yiterator;
+      }
+      while (xiterator > x && yiterator < n) {
+        if (xiterator == n - 1 && yiterator == n - 1) topRight = false;
+        ++counter;
+        --xiterator;
+        ++yiterator;
+      }
+    }
+    ++arm;
+    ++timer;
+  }
+  std::cout << timer << endl;
+  return 0;
+}
+
+
+(G) The Slow & Fast Inputs
+
+(G.1) Slow Input
+
+1000000000 1 999999940 857945620
+
+
+(G.2) Fast Input
+
+1 1 1 1
+
+
+(H) Hit Count Information of Slow Input and Fast Input (Aggregated):
+
+#include <bits/stdc++.h> /* line 1 slow_hit_count: 0, fast_hit_count: 0 */
+using namespace std; /* line 2 slow_hit_count: 0, fast_hit_count: 0 */
+int main(int argc, char const *argv[]) { /* line 3 slow_hit_count: 1, fast_hit_count: 1 */
+  int n, x, y, c; /* line 4 slow_hit_count: 0, fast_hit_count: 0 */
+  std::cin >> n >> x >> y >> c; /* line 5 slow_hit_count: 1, fast_hit_count: 1 */
+  ++n; /* line 6 slow_hit_count: 1, fast_hit_count: 1 */
+  bool topLeft = true, topRight = true, bottomLeft = true, bottomRight = true; /* line 7 slow_hit_count: 1, fast_hit_count: 1 */
+  int counter = 1, timer = 0, arm = 1, up = 0, left = 0, down = 0, right = 0; /* line 8 slow_hit_count: 1, fast_hit_count: 1 */
+  int xiterator, yiterator; /* line 9 slow_hit_count: 0, fast_hit_count: 0 */
+  while (counter < c) { /* line 10 slow_hit_count: 41363, fast_hit_count: 1 */
+    if (topLeft) { /* line 11 slow_hit_count: 41362, fast_hit_count: 0 */
+      xiterator = x - up; /* line 12 slow_hit_count: 60, fast_hit_count: 0 */
+      yiterator = y + arm; /* line 13 slow_hit_count: 60, fast_hit_count: 0 */
+      if (yiterator >= n) { /* line 14 slow_hit_count: 60, fast_hit_count: 0 */
+        yiterator = n - 1; /* line 15 slow_hit_count: 0, fast_hit_count: 0 */
+        ++up; /* line 16 slow_hit_count: 0, fast_hit_count: 0 */
+        --xiterator; /* line 17 slow_hit_count: 0, fast_hit_count: 0 */
+      } /* line 18 slow_hit_count: 0, fast_hit_count: 0 */
+      while (xiterator > 0 && yiterator > y) { /* line 19 slow_hit_count: 120, fast_hit_count: 0 */
+        if (xiterator == 1 && yiterator == n - 1) topLeft = false; /* line 20 slow_hit_count: 60, fast_hit_count: 0 */
+        ++counter; /* line 21 slow_hit_count: 60, fast_hit_count: 0 */
+        --xiterator; /* line 22 slow_hit_count: 60, fast_hit_count: 0 */
+        --yiterator; /* line 23 slow_hit_count: 60, fast_hit_count: 0 */
+      } /* line 24 slow_hit_count: 0, fast_hit_count: 0 */
+    } /* line 25 slow_hit_count: 0, fast_hit_count: 0 */
+    if (bottomLeft) { /* line 26 slow_hit_count: 41362, fast_hit_count: 0 */
+      xiterator = x - arm; /* line 27 slow_hit_count: 41362, fast_hit_count: 0 */
+      yiterator = y - left; /* line 28 slow_hit_count: 41362, fast_hit_count: 0 */
+      if (xiterator <= 0) { /* line 29 slow_hit_count: 41362, fast_hit_count: 0 */
+        xiterator = 1; /* line 30 slow_hit_count: 41362, fast_hit_count: 0 */
+        ++left; /* line 31 slow_hit_count: 41362, fast_hit_count: 0 */
+        --yiterator; /* line 32 slow_hit_count: 41362, fast_hit_count: 0 */
+      } /* line 33 slow_hit_count: 0, fast_hit_count: 0 */
+      while (xiterator < x && yiterator > 0) { /* line 34 slow_hit_count: 41362, fast_hit_count: 0 */
+        if (xiterator == 1 && yiterator == 1) bottomLeft = false; /* line 35 slow_hit_count: 0, fast_hit_count: 0 */
+        ++counter; /* line 36 slow_hit_count: 0, fast_hit_count: 0 */
+        ++xiterator; /* line 37 slow_hit_count: 0, fast_hit_count: 0 */
+        --yiterator; /* line 38 slow_hit_count: 0, fast_hit_count: 0 */
+      } /* line 39 slow_hit_count: 0, fast_hit_count: 0 */
+    } /* line 40 slow_hit_count: 0, fast_hit_count: 0 */
+    if (bottomRight) { /* line 41 slow_hit_count: 41362, fast_hit_count: 0 */
+      xiterator = x + down; /* line 42 slow_hit_count: 41362, fast_hit_count: 0 */
+      yiterator = y - arm; /* line 43 slow_hit_count: 41362, fast_hit_count: 0 */
+      if (yiterator <= 0) { /* line 44 slow_hit_count: 41362, fast_hit_count: 0 */
+        yiterator = 1; /* line 45 slow_hit_count: 0, fast_hit_count: 0 */
+        ++down; /* line 46 slow_hit_count: 0, fast_hit_count: 0 */
+        ++xiterator; /* line 47 slow_hit_count: 0, fast_hit_count: 0 */
+      } /* line 48 slow_hit_count: 0, fast_hit_count: 0 */
+      while (xiterator < n && yiterator < y) { /* line 49 slow_hit_count: 855469565, fast_hit_count: 0 */
+        if (xiterator == n - 1 && yiterator == 1) bottomRight = false; /* line 50 slow_hit_count: 855428203, fast_hit_count: 0 */
+        ++counter; /* line 51 slow_hit_count: 855428203, fast_hit_count: 0 */
+        ++xiterator; /* line 52 slow_hit_count: 855428203, fast_hit_count: 0 */
+        ++yiterator; /* line 53 slow_hit_count: 855428203, fast_hit_count: 0 */
+      } /* line 54 slow_hit_count: 0, fast_hit_count: 0 */
+    } /* line 55 slow_hit_count: 0, fast_hit_count: 0 */
+    if (topRight) { /* line 56 slow_hit_count: 41362, fast_hit_count: 0 */
+      xiterator = x + arm; /* line 57 slow_hit_count: 41362, fast_hit_count: 0 */
+      yiterator = y + right; /* line 58 slow_hit_count: 41362, fast_hit_count: 0 */
+      if (xiterator >= n) { /* line 59 slow_hit_count: 41362, fast_hit_count: 0 */
+        xiterator = n - 1; /* line 60 slow_hit_count: 0, fast_hit_count: 0 */
+        ++right; /* line 61 slow_hit_count: 0, fast_hit_count: 0 */
+        ++yiterator; /* line 62 slow_hit_count: 0, fast_hit_count: 0 */
+      } /* line 63 slow_hit_count: 0, fast_hit_count: 0 */
+      while (xiterator > x && yiterator < n) { /* line 64 slow_hit_count: 2562614, fast_hit_count: 0 */
+        if (xiterator == n - 1 && yiterator == n - 1) topRight = false; /* line 65 slow_hit_count: 2521252, fast_hit_count: 0 */
+        ++counter; /* line 66 slow_hit_count: 2521252, fast_hit_count: 0 */
+        --xiterator; /* line 67 slow_hit_count: 2521252, fast_hit_count: 0 */
+        ++yiterator; /* line 68 slow_hit_count: 2521252, fast_hit_count: 0 */
+      } /* line 69 slow_hit_count: 0, fast_hit_count: 0 */
+    } /* line 70 slow_hit_count: 0, fast_hit_count: 0 */
+    ++arm; /* line 71 slow_hit_count: 41362, fast_hit_count: 0 */
+    ++timer; /* line 72 slow_hit_count: 41362, fast_hit_count: 0 */
+  } /* line 73 slow_hit_count: 0, fast_hit_count: 0 */
+  std::cout << timer << endl; /* line 74 slow_hit_count: 1, fast_hit_count: 1 */
+  return 0; /* line 75 slow_hit_count: 1, fast_hit_count: 1 */
+} /* line 76 slow_hit_count: 0, fast_hit_count: 0 */
+
+
+assistant: ### Phase 1: Identify Expensive or Inefficient Code Segments
+
+#### Analysis of Hit Counts
+
+1. **Line 10** (`while (counter < c) {`):
+   - **Slow Input**: 41,363 hits
+   - **Fast Input**: 1 hit
+   - The main loop is executed significantly more times for the slow input, indicating that reaching the condition `counter < c` is much slower.
+
+2. **Line 49** (`while (xiterator < n && yiterator < y) {`):
+   - **Slow Input**: 855,469,565 hits
+   - **Fast Input**: 0 hits
+   - This while loop is executed an extraordinarily high number of times during the slow input.
+
+3. **Lines 50-53** (within the `bottomRight` quadrant processing):
+   - Similarly, lines 50 to 53 show a similar high count of execution, suggesting that the expansion logic in the `bottomRight` quadrant is a major contributor to the slowdown.
+
+4. **Line 64** (`while (xiterator > x && yiterator < n) {`):
+   - **Slow Input**: 2,562,614 hits
+   - **Fast Input**: 0 hits
+   - The loop in the `topRight` quadrant also shows significant execution but not as much as `bottomRight`.
+
+#### Inferences
+
+- The code is designed to simulate the spread of "on" cells over a grid starting from a single point. The expensive operations come from the while loops that continue expanding the reach across the grid.
+- The performance bottleneck predominantly occurs while processing the `bottomRight` quadrant, where the grid cells expand in a manner that results in high iteration counts.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Here are natural language statements that describe conditions under which the program likely enters a slow path:
+
+1. **Boundary Closeness Invariant**:
+   - "If the initial cell is near the boundary of a very large grid, the program may take significantly longer to fulfill the condition due to inefficient boundary checking."
+   - This is derived from the fact that being near the edge causes some quadrants to iterate longer, especially when `n` is large.
+
+2. **Expansion Direction Convergence Invariant**:
+   - "If the grid expansion predominantly occurs in a direction that has fewer adjacent cells to switch on, the time to reach the desired count can increase significantly."
+   - This relates to the way the cells are expanded and the high hit count in the `bottomRight` quadrant.
+
+3. **Quadrant Overlap Inefficiency Invariant**:
+   - "If multiple quadrants end up overlapping in their coverage, resulting in redundant counts, the spread may slow down as more checks are required in overlapping regions."
+   - This is observed in the uneven hit counts across different quadrants.
+
+These invariants are designed to capture potential future slow scenarios while adhering to the input constraints (e.g., large `n` values). They suggest that slowdown occurs due to inefficient processing in scenarios where part of the grid is near boundaries or when grid expansions overlap excessively.
+
+user: (A) Context
+
+You have already:
+1. Identified expensive code segments (Phase 1).
+2. Derived performance-characterizing invariants in natural language (Phase 2).
+
+Now, you MUST transform these invariants into runtime checks and integrate them into the given C++ program.
+
+(B) Tasks: Revisit the performance-characteristic invariants you inferred in natural langauge and write faithful, error-free C++ code snippets to implement them
+
+You MUST do perform this task in two phases and provide separate answers for both: First, translating the invariants into checker code in C++ (phase 3, below). Second, integrating those checker C++ code snippets with the original program for which you inferred those invariants (phase 4, below).   
+
+Phase 3: Implement the natural language invariants inferred previously, in C++. In this phase you are asked to, 
+1. For each natural language invariant from Phase 2, you MUST produce C++ code that checks the condition at runtime.
+2. You MUST NOT relax or trivialize the checker code implementing these performance-characterizing invariants. You MUST faithfully implement them as described. 
+3. Use the following template for writing checker code in C++ which could also be implemented as a helper function:
+```cpp
+    if (/* condition based on the NL invariant */) {
+        cerr << "Warning: Performance bottleneck condition triggered!" << endl;
+        abort();
+    }
+``` 
+
+Note that not all performance-characterizing invariants are about maximising input size. You may refer to the following examples for inspiration --- some maximising the input size, some not --- but do not simply replicate them exactly. Rather, use them as inspiration to infer and tailor performance-characterizing invariants tailored for the C++ code and problem statement you were asked to analize:
+
+Example Invariant #1:
+
+A potential slowdown arises when certain arrays or lists grow large, causing repeated operations. One way to detect this is to check if the size of a critical array arr (used in a nested loop) exceeds a broad threshold.
+
+Natural language description: “If arr is very large and used in nested loops, the code may repeat operations too many times.”
+
+Code implementing the natural language description:
+
+```cpp
+// Sample checker function
+void check_size_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: size_invariant triggered - array too large for nested loops" << endl;
+        abort();
+    }
+}
+
+// Usage in main or function
+int arrSize = arr.size();
+check_size_invariant(arrSize > 50000);
+```
+
+Example Invariant #2:
+
+Repeated sorting or searching on a data structure can degrade performance, especially if the data structure is large or if the sorting is called multiple times in a loop.
+
+Natural language description: “If a large portion of the code’s execution time is spent in sorting a data structure repeatedly, performance may degrade. Check if the data structure is frequently resorted or reprocessed when it has many elements.”
+
+Code implementing the natural language description:
+
+```cpp
+void check_sort_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: sort_invariant triggered - repeatedly sorting large data" << endl;
+        abort();
+    }
+}
+
+// After reading input or before sorting
+int elementCount = someDataStructure.size();
+check_sort_invariant(elementCount > 100000 && /* some condition indicating repeated sorts */);
+```
+
+Example Invariant #3:
+
+Recursion (e.g., graph traversal or the iterative version of it, recurssive dynamic programming, recurssive computation like computing the next Fibonacci number, etc.) can become expensive if it explores a large search space. A sign of this might be a high branching factor combined with a deep recursion depth.
+
+Natural language description: “If the recursion depth is likely to exceed a certain level or if many branches are processed at each recursive call, the computation may become very expensive.”
+
+```cpp
+void check_dfs_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: dfs_invariant triggered - high recursion depth or branching factor" << endl;
+        abort();
+    }
+}
+
+// Before calling dfs or inside setup
+check_dfs_invariant((maxDepthEstimate > 50) && (branchFactorEstimate > 10));
+```
+
+Example Invariant #4:
+
+Memory usage spikes or large matrix operations can slow down computation if array dimensions become too large. If the program initializes a 2D array based on input dimensions n and m, certain input combinations can trigger large memory footprints or nested loops over the entire matrix.
+
+Natural language description: “If n and m together exceed a threshold that implies large matrix computations, the program may slow significantly.”
+
+```cpp
+void check_matrix_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: matrix_invariant triggered - potentially large matrix operations" << endl;
+        abort();
+    }
+}
+
+// After reading n, m
+check_matrix_invariant(n * m > 1000000);
+```
+
+Example invariant #5:
+
+If a program runs an expensive function or heavy-weight code (e.g. memory allocation) repeatedly within a performance-critical loop or function, the overhead for calling that function can accumulate, slowing the program significantly.
+
+Natural langauge description: "If function foo is an expensive function to execute, and is called a large number of times in a loop or recursive function, the program may slow down significantly"
+
+```cpp
+void check_expensive_function_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: expensive function invariant triggered - excessive calls" << endl;
+        abort();
+    }
+}
+
+check_expensive_function_invariant(n > 1000000);  // arbitrary, but large threshold
+for (i = 0; i < n; ++i) { 
+    foo(); // expensive function
+}
+```
+
+
+Phase 4: Propagate and insert conditional checks. In this phase you are asked to,
+1. Place each check at an effective point in the control/data flow (e.g., after reading inputs, before heavy loops) so you do not add overhead in tight loops. Note that the checker code could also be implemented as a helper function.
+2. If multiple checks overlap, merge or adjust them carefully to avoid redundant warnings.
+3. Provide the final, instrumented C++ code in code fences. Ensure it compiles cleanly and runs without errors.
+4. For each inserted check, add a short comment explaining which bottleneck it detects.
+
+Note the following important considerations when translating the inferred performance-characterizing invariants into code and propagating the checkers to the most efective program point by instrumenting the original code: 
+1. Avoid hardcoding. Don’t rely solely on the exact values from the provided slow input; think in terms of categories or thresholds that lead to slow execution.
+2. In addition to the warning message, remember to insert an "abort()" statement at the end of the checker.
+3. Focus on fuzzer utility. The checks should help a fuzzer detect slow performance triggers by hitting these conditions.
+
+As a refresher, below you are provided with the same program statement and C++ code for which you already inferred performance-characterizing invariants:
+
+Problem statement:
+Mr. Bender has a digital table of size n × n, each cell can be switched on or off. He wants the field to have at least c switched on squares. When this condition is fulfilled, Mr Bender will be happy.
+
+We'll consider the table rows numbered from top to bottom from 1 to n, and the columns — numbered from left to right from 1 to n. Initially there is exactly one switched on cell with coordinates (x, y) (x is the row number, y is the column number), and all other cells are switched off. Then each second we switch on the cells that are off but have the side-adjacent cells that are on.
+
+For a cell with coordinates (x, y) the side-adjacent cells are cells with coordinates (x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1).
+
+In how many seconds will Mr. Bender get happy?
+
+Input
+
+The first line contains four space-separated integers n, x, y, c (1 ≤ n, c ≤ 109; 1 ≤ x, y ≤ n; c ≤ n2).
+
+Output
+
+In a single line print a single integer — the answer to the problem.
+
+Examples
+
+Input
+
+6 4 3 1
+
+
+Output
+
+0
+
+
+Input
+
+9 3 8 10
+
+
+Output
+
+2
+
+Note
+
+Initially the first test has one painted cell, so the answer is 0. In the second test all events will go as is shown on the figure. <image>.
+
+Solution (C++ code):
+{solution}
+
+
+assistant: Let's proceed with the task as outlined:
+
+### Phase 3: Implement the Natural Language Invariants in C++
+
+Here are the checker functions implemented based on the natural language invariants derived in Phase 2:
+
+```cpp
+void check_boundary_closeness_invariant(int n, int x, int y) {
+    // Check if the starting point is near the boundary in a large grid
+    if (n > 1000000 && (x <= 10 || x >= n - 10 || y <= 10 || y >= n - 10)) {
+        cerr << "Warning: Boundary closeness invariant triggered - initial point is near boundary in a large grid!" << endl;
+        abort();
+    }
+}
+
+void check_expansion_direction_convergence_invariant(int n, int x, int y) {
+    // Check if the expansion direction leads to inefficient coverage
+    if (n > 1000000 && (x <= 10 && y >= n - 10)) {
+        cerr << "Warning: Expansion direction convergence invariant triggered - inefficient expansion due to boundary proximity!" << endl;
+        abort();
+    }
+}
+
+void check_quadrant_overlap_inefficiency_invariant(int n, int x, int y) {
+    // Check if multiple quadrants might overlap redundantly
+    if (n > 1000000 && x <= n / 2 && y <= n / 2) {
+        cerr << "Warning: Quadrant overlap inefficiency invariant triggered - potential redundant coverage!" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrate Checkers into Original Program
+
+Here is the original C++ program with the checker functions integrated at appropriate points:
+
+```cpp
+#include <iostream>
+using namespace std;
+
+void check_boundary_closeness_invariant(int n, int x, int y) {
+    if (n > 1000000 && (x <= 10 || x >= n - 10 || y <= 10 || y >= n - 10)) {
+        cerr << "Warning: Boundary closeness invariant triggered - initial point is near boundary in a large grid!" << endl;
+        abort();
+    }
+}
+
+void check_expansion_direction_convergence_invariant(int n, int x, int y) {
+    if (n > 1000000 && (x <= 10 && y >= n - 10)) {
+        cerr << "Warning: Expansion direction convergence invariant triggered - inefficient expansion due to boundary proximity!" << endl;
+        abort();
+    }
+}
+
+void check_quadrant_overlap_inefficiency_invariant(int n, int x, int y) {
+    if (n > 1000000 && x <= n / 2 && y <= n / 2) {
+        cerr << "Warning: Quadrant overlap inefficiency invariant triggered - potential redundant coverage!" << endl;
+        abort();
+    }
+}
+
+int main(int argc, char const *argv[]) {
+    int n, x, y, c;
+    std::cin >> n >> x >> y >> c;
+    ++n;
+
+    // Inserted checkers to detect performance bottlenecks
+    check_boundary_closeness_invariant(n, x, y);
+    check_expansion_direction_convergence_invariant(n, x, y);
+    check_quadrant_overlap_inefficiency_invariant(n, x, y);
+
+    bool topLeft = true, topRight = true, bottomLeft = true, bottomRight = true;
+    int counter = 1, timer = 0, arm = 1, up = 0, left = 0, down = 0, right = 0;
+    int xiterator, yiterator;
+
+    while (counter < c) {
+        if (topLeft) {
+            xiterator = x - up;
+            yiterator = y + arm;
+            if (yiterator >= n) {
+                yiterator = n - 1;
+                ++up;
+                --xiterator;
+            }
+            while (xiterator > 0 && yiterator > y) {
+                if (xiterator == 1 && yiterator == n - 1) topLeft = false;
+                ++counter;
+                --xiterator;
+                --yiterator;
+            }
+        }
+        if (bottomLeft) {
+            xiterator = x - arm;
+            yiterator = y - left;
+            if (xiterator <= 0) {
+                xiterator = 1;
+                ++left;
+                --yiterator;
+            }
+            while (xiterator < x && yiterator > 0) {
+                if (xiterator == 1 && yiterator == 1) bottomLeft = false;
+                ++counter;
+                ++xiterator;
+                --yiterator;
+            }
+        }
+        if (bottomRight) {
+            xiterator = x + down;
+            yiterator = y - arm;
+            if (yiterator <= 0) {
+                yiterator = 1;
+                ++down;
+                ++xiterator;
+            }
+            while (xiterator < n && yiterator < y) {
+                if (xiterator == n - 1 && yiterator == 1) bottomRight = false;
+                ++counter;
+                ++xiterator;
+                ++yiterator;
+            }
+        }
+        if (topRight) {
+            xiterator = x + arm;
+            yiterator = y + right;
+            if (xiterator >= n) {
+                xiterator = n - 1;
+                ++right;
+                ++yiterator;
+            }
+            while (xiterator > x && yiterator < n) {
+                if (xiterator == n - 1 && yiterator == n - 1) topRight = false;
+                ++counter;
+                --xiterator;
+                ++yiterator;
+            }
+        }
+        ++arm;
+        ++timer;
+    }
+    std::cout << timer << endl;
+    return 0;
+}
+```
+
+### Explanation
+
+- **Checker placement**: The checks are placed right after input reading to ensure that they are evaluated before any significant processing occurs, avoiding performance degradation from constant checking inside loops.
+- **Thresholds and conditions**: The checkers use conditions such as proximity to the edges for large `n` values and potential overlaps, which were derived based on observed performance bottlenecks.
+- **Abort mechanism**: Each checker uses `abort()` to immediately halt execution if the condition triggers, aiding in early detection during fuzz testing or debugging.
+
