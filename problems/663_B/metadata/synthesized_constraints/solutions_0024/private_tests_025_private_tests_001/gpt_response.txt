@@ -1,0 +1,133 @@
+=== Invariants Response ===
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+1. **High Hit Counts on Lines 12-15 and 18**: 
+   - These lines are inside a nested loop that constructs possible years starting from 1989, incrementing one by one. The loop continues until it finds a valid year that satisfies the conditions.
+   - Specifically, line 12 converts an integer to a string, line 13 constructs a potential year, line 14 parses the constructed string back to an integer, and line 15 checks if it is a valid year.
+   - The hit count difference between the fast input (16) and the slow input (7198) suggests that this loop is executed a significant number of times for the slow input.
+
+2. **Line 24 to 28 Usage**:
+   - Another loop that tries to prepend numbers to make a valid year starting from a shorter `abbr` string.
+   - Although not used in the fast input, the slow input triggers this loop, as indicated by the hit counts (21).
+
+3. **Use of `goto` Statements**:
+   - The `goto` statements are used to exit loops once a valid year is found. While not inherently a performance issue, they contribute to program flow complexity, making it harder to optimize the loop exit conditions.
+
+4. **Repeated Conversion and Parsing**:
+   - There are repeated conversions from integers to strings and back, which can be computationally expensive, especially within a nested loop.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on the observations above, here are some natural language performance-characterizing invariants:
+
+1. **Incremental Year Construction**:
+   - **Invariant**: "If the abbreviation provided results in a loop that checks many candidate years starting from 1989, the performance may degrade. This is likely when the abbreviation is a sequence of zeroes or similar repetitive patterns, causing a large number of checks."
+   - **Explanation**: The program incrementally checks years starting from 1989. Abbreviations that lead to longer searches before finding an unused year will cause more iterations.
+
+2. **Nested Loop with String Manipulation**:
+   - **Invariant**: "When the abbreviation length is less than 4, and the program attempts to construct valid years by prepending numbers, performance can degrade significantly if the abbreviation represents a year close to 1989, requiring multiple iterations over possible combinations."
+   - **Explanation**: Given the constraints, the number of iterations to find a valid year can grow if the abbreviation represents a small number, as it will check numerous combinations starting from 1989.
+
+3. **Recursive Year Prepending**:
+   - **Invariant**: "If the program enters a state where it must prepend digits to the abbreviation to form a valid year, the search space can become large, causing slow performance. This often occurs with abbreviations that begin with zeroes and require exploration far beyond the initial range."
+   - **Explanation**: This recursive loop attempts to prepend digits to form larger valid years, which can lead to significant performance hits when the abbreviation doesn't directly translate to a year within a short range.
+
+These invariants help describe scenarios where the code is likely to slow down, especially when processing inputs that force extensive searching or construction of candidate years. Ensuring efficiency in these loops or optimizing the search strategy could enhance performance.
+
+=== Checker Response ===
+Certainly! Let's proceed with implementing and integrating performance-checking code for the identified invariants.
+
+### Phase 3: Implement Performance-Characterizing Invariants in C++
+
+Here are the checkers for each of the natural language invariants:
+
+```cpp
+void check_incremental_year_construction(int n) {
+    // Checks if the range of years to be tested is excessively large.
+    if (n > 5000) { // Arbitrary threshold, since initial year is 1989
+        cerr << "Warning: Performance bottleneck condition triggered - excessive year checks due to abbreviation." << endl;
+        abort();
+    }
+}
+
+void check_prepend_digits(int length, int count) {
+    // Checks if the program is attempting to prepend digits excessively to form a valid year
+    if (length < 4 && count > 1000) {  // Threshold based on observation of inputs forming a long search space
+        cerr << "Warning: Performance bottleneck condition triggered - excessive digit prepending attempts." << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrate Checkers into the Original C++ Code
+
+Below is the instrumented code with the performance checkers integrated at appropriate places:
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+int findYear(string abbr, unordered_set<int>& yearFound) {
+    int result;
+    int year = 0;
+    for (int i = 1; i <= abbr.length(); ++i) {
+        string abr = abbr.substr(abbr.length() - i);
+        string nabr;
+        if (abr.length() < 4) {
+            int count = 0;
+            for (int n = 1989; 1; ++n) {
+                string ns = to_string(n);
+                nabr = ns.substr(0, 4 - abr.length()) + abr;
+                year = atoi(nabr.c_str());
+                if (year >= 1989 && yearFound.count(year) == 0) {
+                    goto next;
+                }
+                count++;
+                check_prepend_digits(abr.length(), count);  // Checks excessive digit prepending
+            }
+        }
+        year = atoi(abr.c_str());
+        if (yearFound.count(year) == 0 && year >= 1989) {
+            goto next;
+        }
+        int x = 1;
+        while (true) {
+            abr = to_string(x) + abr;
+            year = atoi(abr.c_str());
+            if (yearFound.count(year) == 0 && year >= 1989) {
+                goto next;
+            }
+            x++;
+            check_incremental_year_construction(x); // Check for excessive increment attempts
+        }
+    next:
+        yearFound.insert(year);
+        continue;
+    }
+    result = year;
+    return result;
+}
+
+int main() {
+    int n;
+    cin >> n;
+    unordered_set<int> yearFound;
+    for (int i = 0; i < n; ++i) {
+        string abbr;
+        cin >> abbr;
+        int year = findYear(abbr.substr(4), yearFound);
+        cout << year << endl;
+    }
+    return 0;
+}
+```
+
+### Explanation
+
+- **`check_incremental_year_construction`**: 
+  - This function checks if the loop is iterating over a large range of candidate years. It's placed in the loop where we increment potential years to detect when the range becomes extensive.
+
+- **`check_prepend_digits`**: 
+  - This check ensures that the digit prepending doesn't lead to excessive attempts to form a valid year. Integrated within the loop that appends digits to the abbreviation.
+
+These checks should help in identifying when the program enters a slow path due to excessive computations, providing valuable feedback for debugging and testing purposes.

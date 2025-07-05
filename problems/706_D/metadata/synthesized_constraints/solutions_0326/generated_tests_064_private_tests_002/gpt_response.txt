@@ -1,0 +1,227 @@
+=== Invariants Response ===
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+1. **Hit Count Comparison:**
+   - The `insert` and `deleteit` functions are heavily utilized in the slow input compared to the fast input due to repeated addition and removal of the same element, leading to a higher number of operations. Specifically, lines within these functions, such as the loop inside `insert` (line 18) and the checks and node creation in `getnode` (lines 20-30), have significantly higher hit counts.
+   - The `deleteit` function (lines 35-54) also shows a higher number of hits, indicating frequent removal operations.
+   - The function `find` (lines 55-78) is frequently called, especially within its loop (lines 59-77), indicating a high number of XOR operations being computed.
+
+2. **Data Structure Interaction:**
+   - The trie data structure used to store binary representations of numbers is repeatedly traversed and modified. Operations such as insertion and deletion in the trie become expensive due to frequent node creation and deletion.
+   - Each modification to the trie potentially impacts all nodes down to a depth of 31 (since we represent numbers up to 31 bits), making these operations costly when performed repeatedly.
+
+3. **Loop and Recursion Analysis:**
+   - The nested loops within `insert` and `deleteit` cause them to traverse the trie tree, potentially up to 31 levels deep, for every insert or delete operation. This depth of traversal, combined with repeated operations on the same elements (such as adding or removing '4'), leads to performance inefficiencies.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+1. **Repeated Element Operations:**
+   - **Invariant 1:** "If the same element is repeatedly inserted and deleted, resulting in numerous modifications to the trie structure, the program may slow down. This is because each operation requires traversal and potential modification of nodes up to the maximum trie depth."
+   
+2. **Trie Depth and Node Management:**
+   - **Invariant 2:** "If the operations on the trie reach deep levels frequently, especially when adding or removing elements, the program might experience slowdowns. This can become particularly impactful when the sequence involves many `+` and `-` operations, causing excessive node management at each bit level."
+
+3. **Dense Query Operations:**
+   - **Invariant 3:** "If a high number of `?` queries are executed consecutively after numerous changes to the trie, the XOR calculation operations may become expensive, especially if the trie structure has been deeply and widely modified by preceding operations."
+
+4. **Structure and Pattern of Queries:**
+   - **Invariant 4:** "Slow performance may occur when there is a dense sequence of `?` operations interleaved with `+` and `-` operations that frequently and deeply modify the trie, as the program must re-evaluate potential maximum XOR values repeatedly across a volatile structure."
+
+By understanding these invariants, we can identify and avoid input patterns that lead to performance bottlenecks in the current implementation of the code. The primary focus should be on minimizing repeated operations on the same elements and managing the depth of operations within the trie data structure.
+
+=== Checker Response ===
+### Phase 3: Implement the Natural Language Invariants in C++
+
+Based on the performance-characterizing invariants identified in natural language, we will create C++ functions to check these conditions at runtime.
+
+#### C++ Code for Invariant Checkers
+
+```cpp
+#include <iostream>
+#include <unordered_map>
+
+// Example data structure used to count occurrences of elements.
+std::unordered_map<int, int> elementFrequency;
+
+// Check for repeated insertion and deletion of the same element
+void check_repeated_element_operations(int element) {
+    if (elementFrequency[element] > 10) {  // Arbitrary threshold for repeated operations
+        std::cerr << "Warning: Performance bottleneck due to repeated insertions and deletions of the same element!" << std::endl;
+        abort();
+    }
+}
+
+// Check for deep trie operations
+void check_trie_depth_operations(unsigned int depth) {
+    if (depth > 31) {  // Maximum depth based on 32-bit integers
+        std::cerr << "Warning: Trie operations are reaching deep levels!" << std::endl;
+        abort();
+    }
+}
+
+// Check for frequently executed XOR queries
+void check_frequent_queries(int queryCount) {
+    if (queryCount > 1000) {  // Arbitrary threshold for frequent queries
+        std::cerr << "Warning: Too many XOR queries are executed consecutively!" << std::endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrate the Checkers into the Original Program
+
+Now, we will integrate these checkers into the original C++ program. We will place the checks in appropriate places such as after reading the input and before performing insertion, deletion, or queries.
+
+#### Instrumented C++ Code
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+// Define the node structure for the trie
+struct node {
+    int isend = 0;
+    int cnt = 0;
+    struct node* left;
+    struct node* right;
+};
+
+// Global root node for the trie
+node* root = new node();
+
+// Function to create a new node
+struct node* getnode() {
+    struct node* cur = new node();
+    cur->left = NULL;
+    cur->right = NULL;
+    return cur;
+}
+
+// Insert a binary string representation into the trie
+void insert(struct node* root, string s) {
+    struct node* cur = root;
+    for (int i = 0; i < s.size(); ++i) {
+        if (s[i] == '0') {
+            if (cur->left == NULL) {
+                cur->left = getnode();
+            }
+            cur->left->cnt++;
+            cur = cur->left;
+        } else {
+            if (cur->right == NULL) {
+                cur->right = getnode();
+            }
+            cur->right->cnt++;
+            cur = cur->right;
+        }
+    }
+    cur->isend++;
+}
+
+// Delete a binary string representation from the trie
+void deleteit(struct node* root, string s) {
+    struct node* cur = root;
+    for (int i = 0; i < s.size(); ++i) {
+        if (s[i] == '0') {
+            cur->left->cnt--;
+            if (cur->left->cnt == 0) {
+                cur->left = NULL;
+                break;
+            } else
+                cur = cur->left;
+        } else {
+            cur->right->cnt--;
+            if (cur->right->cnt == 0) {
+                cur->right = NULL;
+                break;
+            } else
+                cur = cur->right;
+        }
+    }
+}
+
+// Find the maximum XOR of a given binary string with the trie
+long long find(struct node* root, string s) {
+    struct node* cur = root;
+    long long ans = 0;
+    for (int i = 0; i < s.size(); ++i) {
+        if (s[i] == '0') {
+            if (cur->right != NULL) {
+                ans += (1ll << (31 - i));
+                cur = cur->right;
+            } else if (cur->left != NULL) {
+                cur = cur->left;
+                continue;
+            }
+        } else {
+            if (cur->left != NULL) {
+                ans += (1ll << (31 - i));
+                cur = cur->left;
+            } else if (cur->right != NULL)
+                cur = cur->right;
+            continue;
+        }
+    }
+    return ans;
+}
+
+// Convert an integer to a binary string representation
+string get(int x) {
+    string s = "";
+    int sz = 0;
+    while (x) {
+        s = (char)(x % 2 + 48) + s;
+        x /= 2;
+        sz++;
+    }
+    while (sz <= 31) {
+        s = '0' + s;
+        sz++;
+    }
+    return s;
+}
+
+// Main function
+int main() {
+    int q;
+    cin >> q;
+    insert(root, get(0));
+
+    int queryCounter = 0;
+
+    while (q--) {
+        char ch;
+        cin >> ch;
+        if (ch == '+') {
+            long long x;
+            cin >> x;
+            elementFrequency[x]++;  // Track frequency of element
+            check_repeated_element_operations(x);  // Check for repeated operations
+            insert(root, get(x));
+        }
+        if (ch == '-') {
+            long long x;
+            cin >> x;
+            elementFrequency[x]--;  // Track frequency of element
+            check_repeated_element_operations(x);  // Check for repeated operations
+            deleteit(root, get(x));
+        } else if (ch == '?') {
+            long long x;
+            cin >> x;
+            queryCounter++;
+            check_frequent_queries(queryCounter);  // Check for frequent queries
+            long long ans = find(root, get(x));
+            if (ans == 0) ans = x;
+            cout << ans << "\n";
+        }
+    }
+    return 0;
+}
+```
+
+### Explanation
+- **Frequency Tracking:** We maintain an `elementFrequency` map to track how often each element is inserted or deleted, allowing us to detect excessive operations on the same element.
+- **Trie Depth Monitoring:** As the trie depth based on binary strings is fixed for 32-bit integers, we set a depth threshold for operations.
+- **Query Counter:** We use a counter to track the number of consecutive `?` queries to detect potential slowdowns from excessive querying.
+
+Each invariant is integrated into the code to abort execution if a potential performance bottleneck condition is met, helping identify when the program might exhibit slow behavior.

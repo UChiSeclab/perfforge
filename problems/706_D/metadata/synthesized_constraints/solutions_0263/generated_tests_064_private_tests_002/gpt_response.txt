@@ -1,0 +1,241 @@
+=== Invariants Response ===
+To address the performance bottlenecks in the provided C program, we need to analyze the line-level hit counts and understand the logic behind the expensive operations. We'll then explain the findings in natural language as performance-characterizing invariants. 
+
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+1. **Hit Count Analysis**:
+   - **Function `change(int x)`**: This function gets called frequently (15 times for slow input vs. 2 times for fast input). The while loop within it (line 11) to pad the binary string to 32 characters is hit heavily (459 times slow vs. 63 fast).
+   - **Function `add(int x)`**: The loop inside `add` (line 20) is executed 231 times with the slow input compared to 33 times with the fast input. The check and update operations on the `check` array (lines 22-28) are also heavily hit.
+   - **Function `remove(int x)`**: Shows high hit counts (132 times for the loop at line 34) during slow input, indicating frequent calls.
+   - **Function `find(int x, string key, int d)`**: This recursive function is called 128 times during slow input vs. 32 times during fast input. The recursive branching logic (lines 46-58) shows heavy hits.
+   - **Loop and Operation Complexity**:
+     - The `find` function's recursion depends on the depth and structure of the binary trie built from the `add` operations. The hit count indicates complex navigation through the trie.
+     - The `remove` function needs to decrement counts which can cause inefficient navigation through data structures if the multiset elements are repetitive.
+
+2. **Data Structure Interactions**:
+   - The program uses a trie-like structure to manage XOR calculations. Each update or query involves navigating this potentially deep and wide structure.
+   - Frequent additions and removals of the same element can lead to inefficiencies, as seen with the repetitive operations on integer `4` in the slow input.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on the analysis, we can infer the conditions under which performance degrades:
+
+1. **Repetitive Operations in the Trie**:
+   - **Invariant**: "When the same element is added and removed repeatedly in the multiset, this causes excessive updates in the trie structure, leading to slower performance. Specifically, these operations increase the complexity of navigation and modification within the trie."
+   
+2. **Trie Depth and Redundant Recursion**:
+   - **Invariant**: "If a significant portion of execution time is spent on recursive calls within a deep or wide trie during XOR queries, performance may degrade. This can happen when the trie is dense due to many repeated values being inserted and removed."
+   
+3. **Binary String Manipulation Overhead**:
+   - **Invariant**: "The conversion of integers to binary strings with padding to a fixed length can become a bottleneck when processed repeatedly for many operations. This is especially true when the number of operations approaches the upper limits of input constraints."
+
+These invariants highlight the potential slow paths without relying on specific input values. They focus on repetitive operations and the structure of the trie, both of which are crucial given the input constraints.
+
+=== Checker Response ===
+### Phase 3: Implementing the Invariants as C++ Checkers
+
+Based on the performance-characterizing invariants identified earlier, here are the C++ code snippets to check these conditions:
+
+1. **Invariant for Repetitive Operations in the Trie**:
+   - **Checker Code**: This checks if the same element is added and removed repeatedly, which can lead to inefficiencies.
+
+```cpp
+void check_repetitive_operations_invariant(int addCount, int removeCount, int threshold) {
+    if (addCount - removeCount > threshold) {
+        cerr << "Warning: Performance bottleneck triggered due to excessive repetitive operations!" << endl;
+        abort();
+    }
+}
+```
+
+2. **Invariant for Trie Depth and Recursion**:
+   - **Checker Code**: This checks if the recursive function `find` is called excessively, indicating a potential slowdown due to deep trie navigation.
+
+```cpp
+void check_trie_depth_invariant(int recursionDepth, int maxDepth) {
+    if (recursionDepth > maxDepth) {
+        cerr << "Warning: Performance bottleneck triggered due to excessive recursion depth!" << endl;
+        abort();
+    }
+}
+```
+
+3. **Invariant for Binary String Manipulation Overhead**:
+   - **Checker Code**: This checks if the conversion function `change` is called excessively, indicating high overhead.
+
+```cpp
+void check_binary_string_manipulation_invariant(int callCount, int threshold) {
+    if (callCount > threshold) {
+        cerr << "Warning: Performance bottleneck triggered due to excessive binary string manipulation!" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrating Checkers into the Original Program
+
+Here is the C++ code with the integrated checkers:
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+int node = 1;
+const int N = 1e7 + 9;
+int check[N][2];
+int f[N];
+string res;
+int kt[N];
+
+// Performance check thresholds
+const int REPETITIVE_OP_THRESHOLD = 1000;
+const int MAX_RECURSION_DEPTH = 50;
+const int BINARY_MANIPULATION_THRESHOLD = 1000;
+
+// Counters for checkers
+int repetitiveAddCount = 0;
+int repetitiveRemoveCount = 0;
+int findCallCount = 0;
+int changeCallCount = 0;
+
+// Checker function implementations
+void check_repetitive_operations_invariant(int addCount, int removeCount, int threshold) {
+    if (addCount - removeCount > threshold) {
+        cerr << "Warning: Performance bottleneck triggered due to excessive repetitive operations!" << endl;
+        abort();
+    }
+}
+
+void check_trie_depth_invariant(int recursionDepth, int maxDepth) {
+    if (recursionDepth > maxDepth) {
+        cerr << "Warning: Performance bottleneck triggered due to excessive recursion depth!" << endl;
+        abort();
+    }
+}
+
+void check_binary_string_manipulation_invariant(int callCount, int threshold) {
+    if (callCount > threshold) {
+        cerr << "Warning: Performance bottleneck triggered due to excessive binary string manipulation!" << endl;
+        abort();
+    }
+}
+
+string change(int x) {
+    changeCallCount++;
+    check_binary_string_manipulation_invariant(changeCallCount, BINARY_MANIPULATION_THRESHOLD);
+
+    string s = "";
+    while (x != 0) {
+        s += (char)(x % 2 + 48);
+        x = x / 2;
+    }
+    reverse(s.begin(), s.end());
+    while (s.size() < 32) s = '0' + s;
+    return s;
+}
+
+void add(int x) {
+    repetitiveAddCount++;
+    check_repetitive_operations_invariant(repetitiveAddCount, repetitiveRemoveCount, REPETITIVE_OP_THRESHOLD);
+
+    string s = change(x);
+    int curr = 1, tmp;
+    for (int i = 0; i < s.size(); i++) {
+        tmp = curr;
+        if (check[curr][s[i] - 48] == 0) {
+            node++;
+            check[curr][s[i] - 48] = node;
+            curr = node;
+        } else
+            curr = check[curr][s[i] - 48];
+        f[curr]++;
+    }
+}
+
+void remove(int x) {
+    repetitiveRemoveCount++;
+    check_repetitive_operations_invariant(repetitiveAddCount, repetitiveRemoveCount, REPETITIVE_OP_THRESHOLD);
+
+    string s = change(x);
+    int curr = 1;
+    for (int i = 0; i < s.size(); i++) {
+        curr = check[curr][s[i] - 48];
+        f[curr]--;
+    }
+}
+
+void find(int x, string key, int d) {
+    findCallCount++;
+    check_trie_depth_invariant(findCallCount, MAX_RECURSION_DEPTH);
+
+    d++;
+    kt[0] = (check[x][0] == 0 || f[check[x][0]] == 0) ? false : true;
+    kt[1] = (check[x][1] == 0 || f[check[x][1]] == 0) ? false : true;
+    if (!kt[0] && !kt[1]) return;
+    if (!kt[0] || !kt[1]) {
+        if (!kt[0]) {
+            if (key[d] == '1')
+                res += '0';
+            else
+                res += '1';
+            find(check[x][1], key, d);
+        } else {
+            if (key[d] == '1')
+                res += '1';
+            else
+                res += '0';
+            find(check[x][0], key, d);
+        }
+    } else {
+        res += '1';
+        if (key[d] == '1')
+            find(check[x][0], key, d);
+        else
+            find(check[x][1], key, d);
+    }
+}
+
+long long revert(string s) {
+    reverse(s.begin(), s.end());
+    long long res = 0;
+    for (int i = 0; i <= 30; i++) {
+        long long tmp = s[i] - 48;
+        if (tmp != 0) res += tmp * (long long)pow(2, i);
+    }
+    return res;
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(0);
+    cout.tie(0);
+    int n, x;
+    char c;
+    cin >> n;
+    add(0);
+    for (int i = 1; i <= n; i++) {
+        cin >> c >> x;
+        if (c == '+') add(x);
+        if (c == '-') remove(x);
+        if (c == '?') {
+            res = "";
+            find(2, change(x), 0);
+            cout << revert(res) << endl;
+        }
+    }
+    return 0;
+}
+```
+
+### Explanation of Changes
+
+- **Checker Functions**: Three checker functions were added corresponding to the identified invariants. These checkers monitor conditions based on the count of operations and recursion depth.
+  
+- **Integration Points**: 
+  - The check for repetitive operations is monitored within the `add` and `remove` functions since these directly affect trie updates.
+  - The recursion depth is monitored within the `find` function.
+  - The binary string manipulation count is checked each time the `change` function is called.
+
+- **Counters and Thresholds**: The counters (e.g., `repetitiveAddCount`) track the number of calls to specific operations, and thresholds are set to signal potential performance issues.
+
+This integration ensures that any potential bottlenecks are identified during execution, helping to preemptively address performance issues.
