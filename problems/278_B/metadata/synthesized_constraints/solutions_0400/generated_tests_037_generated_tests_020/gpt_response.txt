@@ -1,0 +1,176 @@
+=== Invariants Response ===
+## Phase 1: Identify Expensive or Inefficient Code Segments
+
+1. **Line-Level Hit Counts Analysis**: Comparing the hit counts for the fast and slow inputs, the following lines have significantly more hits for the slow input:
+   - **Lines 5-7 (Function `q`)**: The comparison function `q` for sorting is hit much more often for the slow input (4328 vs. 570 total hits).
+   - **Lines 35-40 (Nested Loops for Substring Extraction)**: These lines, which generate all substrings of the input titles, have more executions for the slow input. For instance, line 36 (the inner loop) is hit 461 times in the slow input compared to 104 times in the fast input.
+   - **Lines 45-47 (Loop to Find Original Title)**: The loop to determine the original title also sees more iterations for the slow input (407 vs. 80 total hits).
+
+2. **Potential Bottlenecks**:
+   - The sorting function (`sort`) and the comparison function (`q`) might become heavy due to the increased number of substrings generated. This results in more frequent and costly comparisons.
+   - The nested loops (lines 35-40) generate a large number of substrings, which increases linearly with the length of the input strings but quadratically with the number of titles.
+
+## Phase 2: Derive Performance-Characterizing Invariants
+
+1. **Invariant: High Number of Substrings**:
+   - **Natural Language Description**: "If the combined length of all problem titles leads to more than several thousand substrings, the sorting and comparison operations will become computationally expensive."
+   - **Explanation**: Given that each substring of every title is generated, when titles are long and numerous, the number of substrings grows significantly, causing the sorting of these substrings to become costly. 
+
+2. **Invariant: Costly Substring Comparisons**:
+   - **Natural Language Description**: "If many different substrings of similar lengths exist, the sorting process will require numerous character comparisons, which can lead to a slowdown."
+   - **Explanation**: The `q` function, used for sorting, is frequently triggered by the need to compare strings. With a high number of similar-length substrings, the function's overhead grows.
+
+3. **Invariant: High Frequency of Permutation Generation**:
+   - **Natural Language Description**: "If the original title candidates need to be frequently incremented to find a non-matching substring, the process will slow down as each candidate is generated and checked."
+   - **Explanation**: When the `nextperm` function is called multiple times (indicating a lot of candidates being checked), it can slow down the program as each new candidate is incrementally generated and matched against the list of substrings.
+
+These invariants capture the key performance issues observed when the input size or the complexity of the input leads to increased number of operations, particularly focusing on string generation and sorting operations.
+
+=== Checker Response ===
+## Phase 3: Implementing the Performance Characterizing Invariants in C++
+
+Below, I provide C++ code snippets that implement the performance-characterizing invariants derived earlier:
+
+### Invariant 1: High Number of Substrings
+
+```cpp
+void check_substring_count_invariant(int substringCount) {
+    if (substringCount > 5000) {  // Example threshold based on problem constraints (many titles and substrings)
+        cerr << "Warning: Performance bottleneck condition triggered - too many substrings generated!" << endl;
+        abort();
+    }
+}
+```
+
+### Invariant 2: Costly Substring Comparisons
+
+```cpp
+void check_comparison_invariant(int comparisonCount) {
+    if (comparisonCount > 4000) {  // Example threshold; triggered if sorting requires many comparisons
+        cerr << "Warning: Performance bottleneck condition triggered - excessive substring comparisons!" << endl;
+        abort();
+    }
+}
+```
+
+### Invariant 3: High Frequency of Permutation Generation
+
+```cpp
+void check_permutation_invariant(int permutationCount) {
+    if (permutationCount > 100) {  // Example threshold to catch frequent permutation generations
+        cerr << "Warning: Performance bottleneck condition triggered - frequent permutation generation!" << endl;
+        abort();
+    }
+}
+```
+
+## Phase 4: Integrating the Checkers into the Original C++ Program
+
+Here is the instrumented version of the original C++ program with integrated performance bottleneck checks:
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+int n, cnt = 0;
+string arr[6336], base = "abcdefghijklmnopqrstuvwxyz", a, now = "a";
+
+// Checker function for too many substrings
+void check_substring_count_invariant(int substringCount) {
+    if (substringCount > 5000) {  // Example threshold
+        cerr << "Warning: Performance bottleneck condition triggered - too many substrings generated!" << endl;
+        abort();
+    }
+}
+
+// Checker function for excessive comparisons
+void check_comparison_invariant(int comparisonCount) {
+    if (comparisonCount > 4000) {  // Example threshold
+        cerr << "Warning: Performance bottleneck condition triggered - excessive substring comparisons!" << endl;
+        abort();
+    }
+}
+
+// Checker function for frequent permutation generation
+void check_permutation_invariant(int permutationCount) {
+    if (permutationCount > 100) {  // Example threshold
+        cerr << "Warning: Performance bottleneck condition triggered - frequent permutation generation!" << endl;
+        abort();
+    }
+}
+
+// Comparator function with invariant check
+bool q(string x, string y) {
+    static int comparisonCount = 0;
+    comparisonCount++;
+    check_comparison_invariant(comparisonCount);
+    
+    if (x.length() != y.length()) return x.length() < y.length();
+    return x < y;
+}
+
+// Function to generate next permutation
+string nextperm(string x) {
+    static int permutationCount = 0;
+    permutationCount++;
+    check_permutation_invariant(permutationCount);
+
+    int l = x.length();
+    if (x[l - 1] != 'z') {
+        int tmp = (int)x[l - 1];
+        tmp++;
+        x[l - 1] = (char)tmp;
+    } else {
+        x[l - 1] = 'a';
+        if (l == 1) {
+            x = 'a' + x;
+            l++;
+        } else {
+            char buff[22];
+            size_t length = x.copy(buff, l - 1, 0);
+            buff[length] = '\0';
+            string y = buff;
+            y = nextperm(y);
+            x.replace(0, l - 1, y);
+        }
+    }
+    return x;
+}
+
+int main() {
+    scanf("%d\n", &n);
+    for (int i = 0; i < n; i++) {
+        getline(cin, a);
+        for (int j = 0; j < a.length(); j++) {
+            for (int k = 1; k <= a.length() - j; k++) {
+                char b[22];
+                size_t length = a.copy(b, k, j);
+                b[length] = '\0';
+                arr[cnt++] = b;
+            }
+        }
+    }
+    
+    // Check substring count invariant after all substrings are generated
+    check_substring_count_invariant(cnt);
+
+    sort(arr, arr + cnt, q);
+    for (int i = 0; i < cnt; i++) {
+        if (now == arr[i]) {
+            now = nextperm(now);
+        }
+    }
+    printf("%s\n", now.c_str());
+    return 0;
+}
+```
+
+### Explanation
+
+- **Checker Functions**: Implemented as separate functions to check each invariant condition.
+- **Integration Points**: 
+  - The substring count invariant is checked after generating all substrings.
+  - The comparison invariant is checked within the custom comparator function `q`.
+  - The permutation invariant is checked within the `nextperm` function.
+
+These checks are designed to catch and warn about potential performance bottlenecks as they occur in the program's execution.

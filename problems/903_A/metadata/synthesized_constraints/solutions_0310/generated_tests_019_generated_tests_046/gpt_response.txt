@@ -1,0 +1,154 @@
+=== Invariants Response ===
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+**Comparison of Line-Level Hit Counts:**
+
+1. **Lines 15-17:** The inner nested loop and condition `(j * 3 + z * 7) == num` are the culprits for the slowdown. These lines are executed significantly more often in the slow input compared to the fast input. Specifically, line 15 is executed 4794 times for the slow input versus 204 times for the fast input, and line 16 is executed 484194 times for the slow input compared to 20604 times for the fast input.
+
+2. **Reason for Increased Hits:** Each test case involves a double loop iterating up to 100 times each, leading to up to 10,000 iterations per test case per input. The slow input has 47 test cases of mainly small values like '1' and '2', which are not easily expressible as sums of multiples of 3 and 7, causing the loop to fully execute in many cases.
+
+3. **Impact of Input Size:** With n = 47, each iteration becomes significantly more expensive, especially when the solution isn't found early in the loops.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+**Natural Language Performance Invariants:**
+
+1. **Small Target Values with Large Iterations:**
+   - *Invariant:* "If the desired number of chicken chunks is small and cannot be exactly represented as a sum of 3a + 7b using low values of a and b, the nested loops will iterate fully, causing slow execution."
+   - *Reasoning:* Small values like 1 or 2 cause the algorithm to exhaustively check all combinations of the form \(3a + 7b\) without early termination, leading to high hit counts.
+
+2. **High Test Case Number Combined with Inefficient Loops:**
+   - *Invariant:* "When the number of test cases is high and the target values frequently lead to fully iterating the j and z loops, the performance will degrade significantly."
+   - *Reasoning:* The combination of having many test cases and target values that require exhaustive checking of possible combinations leads to an overall slow performance.
+
+3. **Loop Boundary Conditions:**
+   - *Invariant:* "If the target number requires a full iteration over both loops until the maximum boundary without finding a solution, the performance will be poor."
+   - *Reasoning:* The loops iterate up to the maximum values even for small inputs that can't be represented as sums of 3s and 7s effectively, increasing computation time.
+
+These invariants collectively highlight that the performance degrades when the algorithm cannot quickly find a solution, especially for small target values or when the number of test cases increases. The nested loops do not efficiently terminate early in cases of non-representable numbers, contributing to the slowdown.
+
+=== Checker Response ===
+### Phase 3: Implement Natural Language Invariants in C++
+
+Based on the previously derived invariants, here are the C++ code snippets that implement checks for potential performance bottlenecks:
+
+1. **Invariant: Small Target Values with Large Iterations**
+   - *Checker Code:*
+     ```cpp
+     void check_small_values_invariant(int num, int j, int z) {
+         if (num <= 7 && j == 100 && z == 100) {
+             cerr << "Warning: Performance bottleneck condition triggered - Small target value with full iterations!" << endl;
+             abort();
+         }
+     }
+     ```
+
+2. **Invariant: High Test Case Number Combined with Inefficient Loops**
+   - *Checker Code:*
+     ```cpp
+     void check_high_test_cases_invariant(int n, int unsuccessfulIterations) {
+         if (n > 40 && unsuccessfulIterations > 4000) {
+             cerr << "Warning: Performance bottleneck condition triggered - High number of test cases with inefficient loops!" << endl;
+             abort();
+         }
+     }
+     ```
+
+3. **Invariant: Loop Boundary Conditions**
+   - *Checker Code:*
+     ```cpp
+     void check_loop_boundary_invariant(int j, int z) {
+         if (j == 100 && z == 100) {
+             cerr << "Warning: Performance bottleneck condition triggered - Loop reached maximum boundary without finding a solution!" << endl;
+             abort();
+         }
+     }
+     ```
+
+### Phase 4: Integrate Checker Code into the Original Program
+
+Below is the instrumented C++ code with the above checks integrated:
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+// Checker for invariant: Small target values with large iterations
+void check_small_values_invariant(int num, int j, int z) {
+    if (num <= 7 && j == 100 && z == 100) {
+        cerr << "Warning: Performance bottleneck condition triggered - Small target value with full iterations!" << endl;
+        abort();
+    }
+}
+
+// Checker for invariant: High test case number with inefficient loops
+void check_high_test_cases_invariant(int n, int unsuccessfulIterations) {
+    if (n > 40 && unsuccessfulIterations > 4000) {
+        cerr << "Warning: Performance bottleneck condition triggered - High number of test cases with inefficient loops!" << endl;
+        abort();
+    }
+}
+
+// Checker for invariant: Loop boundary conditions
+void check_loop_boundary_invariant(int j, int z) {
+    if (j == 100 && z == 100) {
+        cerr << "Warning: Performance bottleneck condition triggered - Loop reached maximum boundary without finding a solution!" << endl;
+        abort();
+    }
+}
+
+int main() {
+    int n, x;
+    cin >> n;
+    vector<int> X(n);
+    for (int i = 0; i < n; i++) {
+        cin >> x;
+        X[i] = x;
+    }
+    bool flag = false;
+    
+    int unsuccessfulIterations = 0; // Track unsuccessful iterations
+
+    for (int i = 0; i < n; i++) {
+        flag = false;
+        int num = X[i];
+        for (int j = 0; j <= 100; j++) {
+            for (int z = 0; z <= 100; z++) {
+                if ((j * 3 + z * 7) == num) {
+                    flag = true;
+                    break;
+                }
+                // Increment unsuccessful iterations
+                unsuccessfulIterations++;
+                // Check loop boundary invariant
+                check_loop_boundary_invariant(j, z);
+            }
+            if (flag) {
+                break;
+            }
+        }
+        // Check small values invariant
+        check_small_values_invariant(num, 100, 100);
+
+        if (flag) {
+            cout << "YES" << endl;
+        } else {
+            cout << "NO" << endl;
+        }
+    }
+    // Check high test cases invariant
+    check_high_test_cases_invariant(n, unsuccessfulIterations);
+    
+    return 0;
+}
+```
+
+### Explanation of Integration:
+
+1. **Checkers are placed to reflect points of potential performance issues:**
+   - The `check_small_values_invariant` is called after the nested loops if a small number was not resolved early.
+   - The `check_loop_boundary_invariant` is called inside the nested loops to detect if we hit the boundaries without finding a solution.
+
+2. **High test case check (`check_high_test_cases_invariant`)** is called after processing all test cases to account for cumulative inefficiencies.
+
+These checks are designed to help a fuzzer identify conditions under which the performance degrades, providing insights into slow paths without adding significant overhead to the main computation.

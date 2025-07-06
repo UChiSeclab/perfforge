@@ -1,0 +1,661 @@
+system: You are a helpful assistant good at coding.
+
+user: (A) Context
+
+You are an experienced C software engineer focusing on performance bottlenecks. You have:
+1. A problem statement describing a task or algorithm (with constraints such as n <= 100).
+2. A C program that implements a solution to that problem.
+3. Two inputs: a “fast” input that completes quickly, and a “slow” input that takes much longer—both inputs have similar size/structure.
+4. Line-level hit counts for both runs, showing which lines get hit significantly more often on the slow input.
+
+Your goal is to diagnose why the program runs slowly for the slow input and derive conditions or invariants that capture what triggers this slowdown.
+
+(B) Tasks: Analyze the given code and generate performance-characterizing invariants in natural language
+
+Phase 1: Identify expensive or onefficient code segments. In this phase you are asked to,
+1. Compare line-level hit counts between the fast and slow runs.
+2. Pinpoint lines or functions that get significantly more hits under the slow input.
+3. Infer how these lines might be interacting with data structures, loops, recursion, etc., especially as they relate to the input constraints (e.g., n <= 100).
+
+Phase 2: Derive performance-characterizing invariants (natural language). In this phase you are asked to,
+1. Generate natural language statements that describe conditions under which the program likely enters a slow path.
+2. Avoid using specific numeric values from the slow input; abstract them into categories or thresholds. However, make sure those thresholds adhere to the input constraints of the problem.
+3. Correlate these conditions strongly to input patterns (e.g., “when n is close to 100 and there is a nested loop,” or “when a data structure is repeatedly sorted”).
+4. Ensure your statements are broad enough to catch possible future slow scenarios, but still reflect realistic triggers given the constraints (like n <= 100).
+
+Note that not all performance-characterizing invariants are about maximising input size. You may refer to the following examples for inspiration --- some maximising the input size, some not --- but do not simply replicate them exactly. Rather, use them as inspiration to infer and tailor performance-characterizing invariants tailored for the C code and problem statement you were asked to analize:
+
+Example Invariant #1:
+
+A potential slowdown arises when certain arrays or lists grow large, causing repeated operations. One way to detect this is to check if the size of a critical array arr (used in a nested loop) exceeds a broad threshold.
+
+Natural language description: “If arr is very large and used in nested loops, the code may repeat operations too many times.”
+
+Code implementing the natural language description:
+
+```cpp
+// Sample checker function
+void check_size_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: size_invariant triggered - array too large for nested loops" << endl;
+        abort();
+    }
+}
+
+// Usage in main or function
+int arrSize = arr.size();
+check_size_invariant(arrSize > 50000);
+```
+
+Example Invariant #2:
+
+Repeated sorting or searching on a data structure can degrade performance, especially if the data structure is large or if the sorting is called multiple times in a loop.
+
+Natural language description: “If a large portion of the code’s execution time is spent in sorting a data structure repeatedly, performance may degrade. Check if the data structure is frequently resorted or reprocessed when it has many elements.”
+
+Code implementing the natural language description:
+
+```cpp
+void check_sort_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: sort_invariant triggered - repeatedly sorting large data" << endl;
+        abort();
+    }
+}
+
+// After reading input or before sorting
+int elementCount = someDataStructure.size();
+check_sort_invariant(elementCount > 100000 && /* some condition indicating repeated sorts */);
+```
+
+Example Invariant #3:
+
+Recursion (e.g., graph traversal or the iterative version of it, recurssive dynamic programming, recurssive computation like computing the next Fibonacci number, etc.) can become expensive if it explores a large search space. A sign of this might be a high branching factor combined with a deep recursion depth.
+
+Natural language description: “If the recursion depth is likely to exceed a certain level or if many branches are processed at each recursive call, the computation may become very expensive.”
+
+```cpp
+void check_dfs_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: dfs_invariant triggered - high recursion depth or branching factor" << endl;
+        abort();
+    }
+}
+
+// Before calling dfs or inside setup
+check_dfs_invariant((maxDepthEstimate > 50) && (branchFactorEstimate > 10));
+```
+
+Example Invariant #4:
+
+Memory usage spikes or large matrix operations can slow down computation if array dimensions become too large. If the program initializes a 2D array based on input dimensions n and m, certain input combinations can trigger large memory footprints or nested loops over the entire matrix.
+
+Natural language description: “If n and m together exceed a threshold that implies large matrix computations, the program may slow significantly.”
+
+```cpp
+void check_matrix_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: matrix_invariant triggered - potentially large matrix operations" << endl;
+        abort();
+    }
+}
+
+// After reading n, m
+check_matrix_invariant(n * m > 1000000);
+```
+
+Example invariant #5:
+
+If a program runs an expensive function or heavy-weight code (e.g. memory allocation) repeatedly within a performance-critical loop or function, the overhead for calling that function can accumulate, slowing the program significantly.
+
+Natural langauge description: "If function foo is an expensive function to execute, and is called a large number of times in a loop or recursive function, the program may slow down significantly"
+
+```cpp
+void check_expensive_function_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: expensive function invariant triggered - excessive calls" << endl;
+        abort();
+    }
+}
+
+check_expensive_function_invariant(n > 1000000);  // arbitrary, but large threshold
+for (i = 0; i < n; ++i) { 
+    foo(); // expensive function
+}
+```
+
+(C) Output Requirements
+1. Provide a list of natural language performance invariants explaining under what conditions the code slows down.
+2. Do not mention or rely on exact values from the provided slow input.
+3. Use or suggest threshold values that align with problem constraints (e.g., n <= 100).
+4. The output should be a concise, descriptive set of statements about performance triggers.
+
+(D) Important Considerations
+1. Avoid hardcoding. Don’t rely solely on the exact values from the provided slow input; think in terms of categories or thresholds that lead to slow execution.
+2. Avoid checks inside tight loops. Place checks in a way that does not significantly degrade performance.
+3. Focus on fuzzer utility. The checks should help a fuzzer detect slow performance triggers by hitting these conditions.
+
+(E) Problem Statement
+
+There are n servers in a laboratory, each of them can perform tasks. Each server has a unique id — integer from 1 to n.
+
+It is known that during the day q tasks will come, the i-th of them is characterized with three integers: ti — the moment in seconds in which the task will come, ki — the number of servers needed to perform it, and di — the time needed to perform this task in seconds. All ti are distinct.
+
+To perform the i-th task you need ki servers which are unoccupied in the second ti. After the servers begin to perform the task, each of them will be busy over the next di seconds. Thus, they will be busy in seconds ti, ti + 1, ..., ti + di - 1. For performing the task, ki servers with the smallest ids will be chosen from all the unoccupied servers. If in the second ti there are not enough unoccupied servers, the task is ignored.
+
+Write the program that determines which tasks will be performed and which will be ignored.
+
+Input
+
+The first line contains two positive integers n and q (1 ≤ n ≤ 100, 1 ≤ q ≤ 105) — the number of servers and the number of tasks. 
+
+Next q lines contains three integers each, the i-th line contains integers ti, ki and di (1 ≤ ti ≤ 106, 1 ≤ ki ≤ n, 1 ≤ di ≤ 1000) — the moment in seconds in which the i-th task will come, the number of servers needed to perform it, and the time needed to perform this task in seconds. The tasks are given in a chronological order and they will come in distinct seconds. 
+
+Output
+
+Print q lines. If the i-th task will be performed by the servers, print in the i-th line the sum of servers' ids on which this task will be performed. Otherwise, print -1.
+
+Examples
+
+Input
+
+4 3
+1 3 2
+2 2 1
+3 4 3
+
+
+Output
+
+6
+-1
+10
+
+
+Input
+
+3 2
+3 2 3
+5 1 2
+
+
+Output
+
+3
+3
+
+
+Input
+
+8 6
+1 3 20
+4 2 1
+6 5 5
+10 1 1
+15 3 6
+21 8 8
+
+
+Output
+
+6
+9
+30
+-1
+15
+36
+
+Note
+
+In the first example in the second 1 the first task will come, it will be performed on the servers with ids 1, 2 and 3 (the sum of the ids equals 6) during two seconds. In the second 2 the second task will come, it will be ignored, because only the server 4 will be unoccupied at that second. In the second 3 the third task will come. By this time, servers with the ids 1, 2 and 3 will be unoccupied again, so the third task will be done on all the servers with the ids 1, 2, 3 and 4 (the sum of the ids is 10).
+
+In the second example in the second 3 the first task will come, it will be performed on the servers with ids 1 and 2 (the sum of the ids is 3) during three seconds. In the second 5 the second task will come, it will be performed on the server 3, because the first two servers will be busy performing the first task.
+
+(F) Program Solving the Problem Statement
+
+#include <bits/stdc++.h>
+using namespace std;
+bool s[105][1001005];
+int n, q;
+int t, k, d;
+int main() {
+  scanf("%d%d", &n, &q);
+  memset(s, true, sizeof s);
+  for (int i = 0; i < q; i++) {
+    scanf("%d%d%d", &t, &k, &d);
+    vector<int> v;
+    for (int j = 0; j < n; j++) {
+      bool bisa = true;
+      for (int l = t; l < t + d; l++) {
+        bisa = (bisa && s[j][l]);
+      }
+      if (bisa) v.push_back(j);
+    }
+    if (v.size() >= k) {
+      int sum = 0;
+      for (int j = 0; j < k; j++) {
+        sum += v[j] + 1;
+        for (int l = t; l < t + d; l++) {
+          s[v[j]][l] = false;
+        }
+      }
+      printf("%d\n", sum);
+    } else {
+      printf("-1\n");
+    }
+  }
+}
+
+
+(G) The Slow & Fast Inputs
+
+(G.1) Slow Input
+
+100 1
+1000000 100 1000
+
+
+(G.2) Fast Input
+
+000 1
+1000000 110 1011
+
+
+(H) Hit Count Information of Slow Input and Fast Input (Aggregated):
+
+#include <bits/stdc++.h> /* line 1 slow_hit_count: 0, fast_hit_count: 0 */
+using namespace std; /* line 2 slow_hit_count: 0, fast_hit_count: 0 */
+bool s[105][1001005]; /* line 3 slow_hit_count: 0, fast_hit_count: 0 */
+int n, q; /* line 4 slow_hit_count: 0, fast_hit_count: 0 */
+int t, k, d; /* line 5 slow_hit_count: 0, fast_hit_count: 0 */
+int main() { /* line 6 slow_hit_count: 1, fast_hit_count: 1 */
+  scanf("%d%d", &n, &q); /* line 7 slow_hit_count: 1, fast_hit_count: 1 */
+  memset(s, true, sizeof s); /* line 8 slow_hit_count: 1, fast_hit_count: 1 */
+  for (int i = 0; i < q; i++) { /* line 9 slow_hit_count: 2, fast_hit_count: 2 */
+    scanf("%d%d%d", &t, &k, &d); /* line 10 slow_hit_count: 1, fast_hit_count: 1 */
+    vector<int> v; /* line 11 slow_hit_count: 2, fast_hit_count: 2 */
+    for (int j = 0; j < n; j++) { /* line 12 slow_hit_count: 101, fast_hit_count: 1 */
+      bool bisa = true; /* line 13 slow_hit_count: 100, fast_hit_count: 0 */
+      for (int l = t; l < t + d; l++) { /* line 14 slow_hit_count: 100100, fast_hit_count: 0 */
+        bisa = (bisa && s[j][l]); /* line 15 slow_hit_count: 100000, fast_hit_count: 0 */
+      } /* line 16 slow_hit_count: 0, fast_hit_count: 0 */
+      if (bisa) v.push_back(j); /* line 17 slow_hit_count: 100, fast_hit_count: 0 */
+    } /* line 18 slow_hit_count: 0, fast_hit_count: 0 */
+    if (v.size() >= k) { /* line 19 slow_hit_count: 1, fast_hit_count: 1 */
+      int sum = 0; /* line 20 slow_hit_count: 1, fast_hit_count: 0 */
+      for (int j = 0; j < k; j++) { /* line 21 slow_hit_count: 101, fast_hit_count: 0 */
+        sum += v[j] + 1; /* line 22 slow_hit_count: 100, fast_hit_count: 0 */
+        for (int l = t; l < t + d; l++) { /* line 23 slow_hit_count: 100100, fast_hit_count: 0 */
+          s[v[j]][l] = false; /* line 24 slow_hit_count: 100000, fast_hit_count: 0 */
+        } /* line 25 slow_hit_count: 0, fast_hit_count: 0 */
+      } /* line 26 slow_hit_count: 0, fast_hit_count: 0 */
+      printf("%d\n", sum); /* line 27 slow_hit_count: 1, fast_hit_count: 0 */
+    } else { /* line 28 slow_hit_count: 0, fast_hit_count: 0 */
+      printf("-1\n"); /* line 29 slow_hit_count: 0, fast_hit_count: 1 */
+    } /* line 30 slow_hit_count: 0, fast_hit_count: 0 */
+  } /* line 31 slow_hit_count: 0, fast_hit_count: 0 */
+} /* line 32 slow_hit_count: 1, fast_hit_count: 1 */
+
+
+assistant: To diagnose the performance bottlenecks and derive performance-characterizing invariants, let's start by analyzing the code and hit count information.
+
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+Based on the provided hit counts:
+
+- **Line 14 (`for (int l = t; l < t + d; l++)`)** and **Line 15 (`bisa = (bisa && s[j][l]);`)** are hit 100,000 times during the slow input run. This indicates that this nested loop is a major contributor to the slowed performance. The loop iterates over the time duration `d` for each server `j`.
+
+- **Line 12 (`for (int j = 0; j < n; j++)`)** with 101 hits suggests that the outer loop iterates over all servers, further amplifying the cost of the inner loop.
+
+- **Lines 23 (`for (int l = t; l < t + d; l++)`)** and **24 (`s[v[j]][l] = false;`)** also have a high number of hits, indicating that marking servers as busy is similarly expensive.
+
+This indicates that the bottleneck occurs due to the high number of checks performed for each task over the entire duration `d` and across all servers `n`.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on the analysis, here are the natural language performance invariants:
+
+1. **Server Availability Check Invariant:**
+   - "If the number of servers `n` is large and the duration `d` is also large, the checks for server availability become expensive. This occurs because the algorithm checks each server over the entire duration of each task, leading to a significant number of operations."
+
+2. **Server Marking Invariant:**
+   - "If tasks frequently require marking servers as busy for a long duration `d` relative to the number of servers `n`, the operations to update server states become costly. This is particularly noticeable when the combination of `n` and `d` results in repeated and extended state changes."
+
+3. **Task Overlap Invariant:**
+   - "When consecutive tasks have overlapping durations, and the number of servers `n` is insufficient to handle all tasks concurrently, the increased frequency of server state checks and updates can slow down the program. This is especially true when `d` is large relative to the availability of free servers."
+
+To avoid concrete values from slow input, these descriptions focus on the abstract conditions causing slowness, such as the combination of large `n`, `d`, and overlapping tasks.
+
+### Conclusion
+
+The identified inefficiencies are primarily related to nested loops iterating over large combinations of servers and time durations. By understanding these performance-characterizing invariants, one can anticipate and optimize against potential slowdowns in future inputs with similar characteristics.
+
+user: (A) Context
+
+You have already:
+1. Identified expensive code segments (Phase 1).
+2. Derived performance-characterizing invariants in natural language (Phase 2).
+
+Now, you MUST transform these invariants into runtime checks and integrate them into the given C++ program.
+
+(B) Tasks: Revisit the performance-characteristic invariants you inferred in natural langauge and write faithful, error-free C++ code snippets to implement them
+
+You MUST do perform this task in two phases and provide separate answers for both: First, translating the invariants into checker code in C++ (phase 3, below). Second, integrating those checker C++ code snippets with the original program for which you inferred those invariants (phase 4, below).   
+
+Phase 3: Implement the natural language invariants inferred previously, in C++. In this phase you are asked to, 
+1. For each natural language invariant from Phase 2, you MUST produce C++ code that checks the condition at runtime.
+2. You MUST NOT relax or trivialize the checker code implementing these performance-characterizing invariants. You MUST faithfully implement them as described. 
+3. Use the following template for writing checker code in C++ which could also be implemented as a helper function:
+```cpp
+    if (/* condition based on the NL invariant */) {
+        cerr << "Warning: Performance bottleneck condition triggered!" << endl;
+        abort();
+    }
+``` 
+
+Note that not all performance-characterizing invariants are about maximising input size. You may refer to the following examples for inspiration --- some maximising the input size, some not --- but do not simply replicate them exactly. Rather, use them as inspiration to infer and tailor performance-characterizing invariants tailored for the C++ code and problem statement you were asked to analize:
+
+Example Invariant #1:
+
+A potential slowdown arises when certain arrays or lists grow large, causing repeated operations. One way to detect this is to check if the size of a critical array arr (used in a nested loop) exceeds a broad threshold.
+
+Natural language description: “If arr is very large and used in nested loops, the code may repeat operations too many times.”
+
+Code implementing the natural language description:
+
+```cpp
+// Sample checker function
+void check_size_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: size_invariant triggered - array too large for nested loops" << endl;
+        abort();
+    }
+}
+
+// Usage in main or function
+int arrSize = arr.size();
+check_size_invariant(arrSize > 50000);
+```
+
+Example Invariant #2:
+
+Repeated sorting or searching on a data structure can degrade performance, especially if the data structure is large or if the sorting is called multiple times in a loop.
+
+Natural language description: “If a large portion of the code’s execution time is spent in sorting a data structure repeatedly, performance may degrade. Check if the data structure is frequently resorted or reprocessed when it has many elements.”
+
+Code implementing the natural language description:
+
+```cpp
+void check_sort_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: sort_invariant triggered - repeatedly sorting large data" << endl;
+        abort();
+    }
+}
+
+// After reading input or before sorting
+int elementCount = someDataStructure.size();
+check_sort_invariant(elementCount > 100000 && /* some condition indicating repeated sorts */);
+```
+
+Example Invariant #3:
+
+Recursion (e.g., graph traversal or the iterative version of it, recurssive dynamic programming, recurssive computation like computing the next Fibonacci number, etc.) can become expensive if it explores a large search space. A sign of this might be a high branching factor combined with a deep recursion depth.
+
+Natural language description: “If the recursion depth is likely to exceed a certain level or if many branches are processed at each recursive call, the computation may become very expensive.”
+
+```cpp
+void check_dfs_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: dfs_invariant triggered - high recursion depth or branching factor" << endl;
+        abort();
+    }
+}
+
+// Before calling dfs or inside setup
+check_dfs_invariant((maxDepthEstimate > 50) && (branchFactorEstimate > 10));
+```
+
+Example Invariant #4:
+
+Memory usage spikes or large matrix operations can slow down computation if array dimensions become too large. If the program initializes a 2D array based on input dimensions n and m, certain input combinations can trigger large memory footprints or nested loops over the entire matrix.
+
+Natural language description: “If n and m together exceed a threshold that implies large matrix computations, the program may slow significantly.”
+
+```cpp
+void check_matrix_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: matrix_invariant triggered - potentially large matrix operations" << endl;
+        abort();
+    }
+}
+
+// After reading n, m
+check_matrix_invariant(n * m > 1000000);
+```
+
+Example invariant #5:
+
+If a program runs an expensive function or heavy-weight code (e.g. memory allocation) repeatedly within a performance-critical loop or function, the overhead for calling that function can accumulate, slowing the program significantly.
+
+Natural langauge description: "If function foo is an expensive function to execute, and is called a large number of times in a loop or recursive function, the program may slow down significantly"
+
+```cpp
+void check_expensive_function_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: expensive function invariant triggered - excessive calls" << endl;
+        abort();
+    }
+}
+
+check_expensive_function_invariant(n > 1000000);  // arbitrary, but large threshold
+for (i = 0; i < n; ++i) { 
+    foo(); // expensive function
+}
+```
+
+
+Phase 4: Propagate and insert conditional checks. In this phase you are asked to,
+1. Place each check at an effective point in the control/data flow (e.g., after reading inputs, before heavy loops) so you do not add overhead in tight loops. Note that the checker code could also be implemented as a helper function.
+2. If multiple checks overlap, merge or adjust them carefully to avoid redundant warnings.
+3. Provide the final, instrumented C++ code in code fences. Ensure it compiles cleanly and runs without errors.
+4. For each inserted check, add a short comment explaining which bottleneck it detects.
+
+Note the following important considerations when translating the inferred performance-characterizing invariants into code and propagating the checkers to the most efective program point by instrumenting the original code: 
+1. Avoid hardcoding. Don’t rely solely on the exact values from the provided slow input; think in terms of categories or thresholds that lead to slow execution.
+2. In addition to the warning message, remember to insert an "abort()" statement at the end of the checker.
+3. Focus on fuzzer utility. The checks should help a fuzzer detect slow performance triggers by hitting these conditions.
+
+As a refresher, below you are provided with the same program statement and C++ code for which you already inferred performance-characterizing invariants:
+
+Problem statement:
+There are n servers in a laboratory, each of them can perform tasks. Each server has a unique id — integer from 1 to n.
+
+It is known that during the day q tasks will come, the i-th of them is characterized with three integers: ti — the moment in seconds in which the task will come, ki — the number of servers needed to perform it, and di — the time needed to perform this task in seconds. All ti are distinct.
+
+To perform the i-th task you need ki servers which are unoccupied in the second ti. After the servers begin to perform the task, each of them will be busy over the next di seconds. Thus, they will be busy in seconds ti, ti + 1, ..., ti + di - 1. For performing the task, ki servers with the smallest ids will be chosen from all the unoccupied servers. If in the second ti there are not enough unoccupied servers, the task is ignored.
+
+Write the program that determines which tasks will be performed and which will be ignored.
+
+Input
+
+The first line contains two positive integers n and q (1 ≤ n ≤ 100, 1 ≤ q ≤ 105) — the number of servers and the number of tasks. 
+
+Next q lines contains three integers each, the i-th line contains integers ti, ki and di (1 ≤ ti ≤ 106, 1 ≤ ki ≤ n, 1 ≤ di ≤ 1000) — the moment in seconds in which the i-th task will come, the number of servers needed to perform it, and the time needed to perform this task in seconds. The tasks are given in a chronological order and they will come in distinct seconds. 
+
+Output
+
+Print q lines. If the i-th task will be performed by the servers, print in the i-th line the sum of servers' ids on which this task will be performed. Otherwise, print -1.
+
+Examples
+
+Input
+
+4 3
+1 3 2
+2 2 1
+3 4 3
+
+
+Output
+
+6
+-1
+10
+
+
+Input
+
+3 2
+3 2 3
+5 1 2
+
+
+Output
+
+3
+3
+
+
+Input
+
+8 6
+1 3 20
+4 2 1
+6 5 5
+10 1 1
+15 3 6
+21 8 8
+
+
+Output
+
+6
+9
+30
+-1
+15
+36
+
+Note
+
+In the first example in the second 1 the first task will come, it will be performed on the servers with ids 1, 2 and 3 (the sum of the ids equals 6) during two seconds. In the second 2 the second task will come, it will be ignored, because only the server 4 will be unoccupied at that second. In the second 3 the third task will come. By this time, servers with the ids 1, 2 and 3 will be unoccupied again, so the third task will be done on all the servers with the ids 1, 2, 3 and 4 (the sum of the ids is 10).
+
+In the second example in the second 3 the first task will come, it will be performed on the servers with ids 1 and 2 (the sum of the ids is 3) during three seconds. In the second 5 the second task will come, it will be performed on the server 3, because the first two servers will be busy performing the first task.
+
+Solution (C++ code):
+{solution}
+
+
+assistant: ### Phase 3: Implement the Natural Language Invariants in C++
+
+Below, I provide C++ code implementing the performance-checking invariants derived previously:
+
+#### 1. Server Availability Check Invariant
+This invariant checks if the number of servers `n` combined with the duration `d` leads to expensive server availability checks.
+```cpp
+void check_server_availability_invariant(int n, int d) {
+    if (n * d > 10000) { // Threshold can be adjusted based on expected load
+        cerr << "Warning: Server availability check invariant triggered - high check frequency!" << endl;
+        abort();
+    }
+}
+```
+
+#### 2. Server Marking Invariant
+This invariant checks if updating server states for a long `d` is costly.
+```cpp
+void check_server_marking_invariant(int n, int d) {
+    if (n * d > 10000) { // Threshold can be adjusted based on expected load
+        cerr << "Warning: Server marking invariant triggered - frequent state updates!" << endl;
+        abort();
+    }
+}
+```
+
+#### 3. Task Overlap Invariant
+This invariant checks for potential performance issues caused by overlapping tasks.
+```cpp
+void check_task_overlap_invariant(int n, int d, int k) {
+    if ((n - k) * d < 0) { // If k servers are needed but n-k is small, causing overlap
+        cerr << "Warning: Task overlap invariant triggered - insufficient free servers!" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrate the Checks into the Original Program
+
+Now, let's integrate these checks into the original C++ program. I'll place the checks at strategic points in the code to avoid overhead in tight loops.
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+// Checker functions
+void check_server_availability_invariant(int n, int d) {
+    if (n * d > 10000) { // Threshold can be adjusted based on expected load
+        cerr << "Warning: Server availability check invariant triggered - high check frequency!" << endl;
+        abort();
+    }
+}
+
+void check_server_marking_invariant(int n, int d) {
+    if (n * d > 10000) { // Threshold can be adjusted based on expected load
+        cerr << "Warning: Server marking invariant triggered - frequent state updates!" << endl;
+        abort();
+    }
+}
+
+void check_task_overlap_invariant(int n, int d, int k) {
+    if ((n - k) * d < 0) { // If k servers are needed, but n-k is small, causing overlap
+        cerr << "Warning: Task overlap invariant triggered - insufficient free servers!" << endl;
+        abort();
+    }
+}
+
+bool s[105][1001005];
+int n, q;
+int t, k, d;
+
+int main() {
+    scanf("%d%d", &n, &q);
+    memset(s, true, sizeof s);
+
+    for (int i = 0; i < q; i++) {
+        scanf("%d%d%d", &t, &k, &d);
+
+        // Check performance invariants
+        check_server_availability_invariant(n, d);
+        check_server_marking_invariant(n, d);
+        check_task_overlap_invariant(n, d, k);
+
+        vector<int> v;
+        for (int j = 0; j < n; j++) {
+            bool bisa = true;
+            for (int l = t; l < t + d; l++) {
+                bisa = (bisa && s[j][l]);
+            }
+            if (bisa) v.push_back(j);
+        }
+        if (v.size() >= k) {
+            int sum = 0;
+            for (int j = 0; j < k; j++) {
+                sum += v[j] + 1;
+                for (int l = t; l < t + d; l++) {
+                    s[v[j]][l] = false;
+                }
+            }
+            printf("%d\n", sum);
+        } else {
+            printf("-1\n");
+        }
+    }
+}
+```
+
+In this integrated code:
+
+- **Performance checks** are added right after reading the input for each task set, before the expensive loops and calculations, to detect potential bottlenecks early without adding overhead to tight execution paths.
+- **Thresholds** are set based on expected load scenarios. Adjust these thresholds according to specific performance goals and test results.
+

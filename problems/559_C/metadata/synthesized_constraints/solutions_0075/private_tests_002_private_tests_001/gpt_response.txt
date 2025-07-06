@@ -1,0 +1,168 @@
+=== Invariants Response ===
+To diagnose the performance bottlenecks in the provided C program, we will follow the structured analysis outlined in your task description.
+
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+1. **Compare Line-level Hit Counts**:
+    - The function `pow_mod` is called significantly more often in the slow input compared to the fast input, with hit counts of 9,000,045 versus 90,045. This suggests that the computation of modular inverses is a major contributor to the slowdown.
+
+2. **Pinpoint Lines or Functions with Significant Hits**:
+    - **Lines 9-13**: `pow_mod` function is used extensively within the loop calculating `inv_facts`, indicating repeated, potentially expensive calculations.
+    - **Lines 22-25**: The loop populating `facts` and `inv_facts` has a much higher iteration count (200,002 vs. 2,002), corresponding to the larger dimensions of the board (h, w).
+
+3. **Interaction with Data Structures and Loops**:
+    - The program iterates over each potential path step on a large X x Y board (where X and Y can be as large as 100,000). The factorial calculation scales with the size of the board, leading to a large number of multiplications and modular inverse operations.
+
+### Phase 2: Derive Performance-Characterizing Invariants (Natural Language)
+
+1. **Invariant 1**: Large Board Dimensions
+    - **Natural Language Description**: "If the dimensions of the board, `h` and `w`, are large, specifically when both are close to their maximum limits, the computation of paths including factorial and modular arithmetic operations becomes increasingly expensive, leading to potential slowdowns."
+    
+2. **Invariant 2**: High Frequency of Modular Inversion
+    - **Natural Language Description**: "If the factorial operations for precomputing combinations involve frequently recalculating modular inverses due to large board dimensions, this can result in significant computational overhead, impacting performance."
+    
+3. **Invariant 3**: Dense Black Cell Distribution Impact on Paths
+    - **Natural Language Description**: "When black cells are densely distributed and positioned such that they significantly restrict possible paths from the start to the end, the program spends more time recalculating possible path offsets, leading to slower execution."
+
+### Conclusion
+
+The bottleneck primarily arises from the `pow_mod` function and factorial precomputation, which are exacerbated by larger board dimensions. The problem is intensified by the high computational overhead from factorial and inverse calculations required for combinatorial paths. These insights indicate that future slow scenarios will likely occur when both board dimensions approach their upper bounds, and when black cells are positioned to restrict path options significantly.
+
+=== Checker Response ===
+### Phase 3: Implement the Natural Language Invariants in C++
+
+Here are the checker functions that implement the natural language invariants derived in Phase 2:
+
+#### Invariant 1: Large Board Dimensions
+
+```cpp
+void check_large_board_dimensions(long long int h, long long int w) {
+    if (h > 100000 || w > 100000) {
+        cerr << "Warning: Performance bottleneck condition triggered - large board dimensions!" << endl;
+        abort();
+    }
+}
+```
+
+#### Invariant 2: High Frequency of Modular Inversion
+
+```cpp
+void check_high_modular_inversion_frequency(long long int maxF) {
+    if (maxF > 200000) { // Just above the reasonable limit for board size
+        cerr << "Warning: Performance bottleneck condition triggered - high frequency of modular inversion!" << endl;
+        abort();
+    }
+}
+```
+
+#### Invariant 3: Dense Black Cell Distribution Impact on Paths
+
+```cpp
+void check_dense_black_cell_distribution(long long int blackCells) {
+    if (blackCells > 1500) { // Assuming a threshold for dense distribution
+        cerr << "Warning: Performance bottleneck condition triggered - dense distribution of black cells!" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrate the Checkers into the Original C++ Program
+
+Here's the instrumented C++ code with the integrated checks:
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+// Checker functions
+void check_large_board_dimensions(long long int h, long long int w) {
+    if (h > 100000 || w > 100000) {
+        cerr << "Warning: Performance bottleneck condition triggered - large board dimensions!" << endl;
+        abort();
+    }
+}
+
+void check_high_modular_inversion_frequency(long long int maxF) {
+    if (maxF > 200000) {
+        cerr << "Warning: Performance bottleneck condition triggered - high frequency of modular inversion!" << endl;
+        abort();
+    }
+}
+
+void check_dense_black_cell_distribution(long long int blackCells) {
+    if (blackCells > 1500) {
+        cerr << "Warning: Performance bottleneck condition triggered - dense distribution of black cells!" << endl;
+        abort();
+    }
+}
+
+vector<long long int> facts;
+vector<long long int> inv_facts;
+
+long long int c(long long int n, long long int p) {
+    if (p < 0 || n < p) return 0;
+    return (facts[n] * inv_facts[p]) % 1000000007 * inv_facts[n - p] % 1000000007;
+}
+
+long long int pow_mod(long long int x, long long int n) {
+    if (n == 0) return 1;
+    if (n & 1) return x * pow_mod(x, n - 1) % 1000000007;
+    long long int tmp = pow_mod(x, n / 2);
+    return tmp * tmp % 1000000007;
+}
+
+int main(int argc, char* argv[]) {
+    ios_base::sync_with_stdio(false);
+    long long int X, Y, N;
+    cin >> X >> Y >> N;
+    
+    // Check for large board dimensions
+    check_large_board_dimensions(X, Y);
+    
+    facts.push_back(1);
+    inv_facts.push_back(1);
+    long long int maxF = X + Y + 1;
+    
+    // Check for high frequency of modular inversion
+    check_high_modular_inversion_frequency(maxF);
+
+    for (long long int n = 1; n <= maxF; ++n) {
+        long long int f = facts[n - 1] * n % 1000000007;
+        facts.push_back(f);
+        inv_facts.push_back(pow_mod(f, 1000000007 - 2));
+    }
+    
+    vector<pair<long long int, long long int> > xys;
+    
+    // Check for dense black cell distribution
+    check_dense_black_cell_distribution(N);
+
+    for (long long int n = 0; n < N; ++n) {
+        long long int x, y;
+        cin >> x >> y;
+        xys.push_back(make_pair(x - 1, y - 1));
+    }
+    
+    xys.push_back(make_pair(X - 1, Y - 1));
+    sort(xys.begin(), xys.end());
+    vector<long long int> dp(N + 1);
+    
+    for (long long int n = 0; n <= N; ++n) {
+        long long int x = xys[n].first, y = xys[n].second;
+        long long int tmp = c(x + y, y);
+        for (long long int m = 0; m < N; ++m) {
+            long long int xm = xys[m].first, ym = xys[m].second;
+            if (xm <= x && ym <= y)
+                tmp = (tmp + 1000000007 - dp[m] * c(x - xm + y - ym, x - xm) % 1000000007) % 1000000007;
+        }
+        dp[n] = tmp;
+    }
+    cout << dp[N] << endl;
+    return 0;
+}
+```
+
+### Explanation
+
+- **Check Placement**: The checks are placed after reading inputs and before entering major loops or performing computationally expensive operations to avoid unnecessary overhead.
+- **Thresholds**: Thresholds are chosen reasonably within the problem constraints such as board size and the number of black cells.

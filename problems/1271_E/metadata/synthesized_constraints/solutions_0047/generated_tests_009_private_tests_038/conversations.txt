@@ -1,0 +1,883 @@
+system: You are a helpful assistant good at coding.
+
+user: (A) Context
+
+You are an experienced C software engineer focusing on performance bottlenecks. You have:
+1. A problem statement describing a task or algorithm (with constraints such as n <= 100).
+2. A C program that implements a solution to that problem.
+3. Two inputs: a “fast” input that completes quickly, and a “slow” input that takes much longer—both inputs have similar size/structure.
+4. Line-level hit counts for both runs, showing which lines get hit significantly more often on the slow input.
+
+Your goal is to diagnose why the program runs slowly for the slow input and derive conditions or invariants that capture what triggers this slowdown.
+
+(B) Tasks: Analyze the given code and generate performance-characterizing invariants in natural language
+
+Phase 1: Identify expensive or onefficient code segments. In this phase you are asked to,
+1. Compare line-level hit counts between the fast and slow runs.
+2. Pinpoint lines or functions that get significantly more hits under the slow input.
+3. Infer how these lines might be interacting with data structures, loops, recursion, etc., especially as they relate to the input constraints (e.g., n <= 100).
+
+Phase 2: Derive performance-characterizing invariants (natural language). In this phase you are asked to,
+1. Generate natural language statements that describe conditions under which the program likely enters a slow path.
+2. Avoid using specific numeric values from the slow input; abstract them into categories or thresholds. However, make sure those thresholds adhere to the input constraints of the problem.
+3. Correlate these conditions strongly to input patterns (e.g., “when n is close to 100 and there is a nested loop,” or “when a data structure is repeatedly sorted”).
+4. Ensure your statements are broad enough to catch possible future slow scenarios, but still reflect realistic triggers given the constraints (like n <= 100).
+
+Note that not all performance-characterizing invariants are about maximising input size. You may refer to the following examples for inspiration --- some maximising the input size, some not --- but do not simply replicate them exactly. Rather, use them as inspiration to infer and tailor performance-characterizing invariants tailored for the C code and problem statement you were asked to analize:
+
+Example Invariant #1:
+
+A potential slowdown arises when certain arrays or lists grow large, causing repeated operations. One way to detect this is to check if the size of a critical array arr (used in a nested loop) exceeds a broad threshold.
+
+Natural language description: “If arr is very large and used in nested loops, the code may repeat operations too many times.”
+
+Code implementing the natural language description:
+
+```cpp
+// Sample checker function
+void check_size_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: size_invariant triggered - array too large for nested loops" << endl;
+        abort();
+    }
+}
+
+// Usage in main or function
+int arrSize = arr.size();
+check_size_invariant(arrSize > 50000);
+```
+
+Example Invariant #2:
+
+Repeated sorting or searching on a data structure can degrade performance, especially if the data structure is large or if the sorting is called multiple times in a loop.
+
+Natural language description: “If a large portion of the code’s execution time is spent in sorting a data structure repeatedly, performance may degrade. Check if the data structure is frequently resorted or reprocessed when it has many elements.”
+
+Code implementing the natural language description:
+
+```cpp
+void check_sort_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: sort_invariant triggered - repeatedly sorting large data" << endl;
+        abort();
+    }
+}
+
+// After reading input or before sorting
+int elementCount = someDataStructure.size();
+check_sort_invariant(elementCount > 100000 && /* some condition indicating repeated sorts */);
+```
+
+Example Invariant #3:
+
+Recursion (e.g., graph traversal or the iterative version of it, recurssive dynamic programming, recurssive computation like computing the next Fibonacci number, etc.) can become expensive if it explores a large search space. A sign of this might be a high branching factor combined with a deep recursion depth.
+
+Natural language description: “If the recursion depth is likely to exceed a certain level or if many branches are processed at each recursive call, the computation may become very expensive.”
+
+```cpp
+void check_dfs_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: dfs_invariant triggered - high recursion depth or branching factor" << endl;
+        abort();
+    }
+}
+
+// Before calling dfs or inside setup
+check_dfs_invariant((maxDepthEstimate > 50) && (branchFactorEstimate > 10));
+```
+
+Example Invariant #4:
+
+Memory usage spikes or large matrix operations can slow down computation if array dimensions become too large. If the program initializes a 2D array based on input dimensions n and m, certain input combinations can trigger large memory footprints or nested loops over the entire matrix.
+
+Natural language description: “If n and m together exceed a threshold that implies large matrix computations, the program may slow significantly.”
+
+```cpp
+void check_matrix_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: matrix_invariant triggered - potentially large matrix operations" << endl;
+        abort();
+    }
+}
+
+// After reading n, m
+check_matrix_invariant(n * m > 1000000);
+```
+
+Example invariant #5:
+
+If a program runs an expensive function or heavy-weight code (e.g. memory allocation) repeatedly within a performance-critical loop or function, the overhead for calling that function can accumulate, slowing the program significantly.
+
+Natural langauge description: "If function foo is an expensive function to execute, and is called a large number of times in a loop or recursive function, the program may slow down significantly"
+
+```cpp
+void check_expensive_function_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: expensive function invariant triggered - excessive calls" << endl;
+        abort();
+    }
+}
+
+check_expensive_function_invariant(n > 1000000);  // arbitrary, but large threshold
+for (i = 0; i < n; ++i) { 
+    foo(); // expensive function
+}
+```
+
+(C) Output Requirements
+1. Provide a list of natural language performance invariants explaining under what conditions the code slows down.
+2. Do not mention or rely on exact values from the provided slow input.
+3. Use or suggest threshold values that align with problem constraints (e.g., n <= 100).
+4. The output should be a concise, descriptive set of statements about performance triggers.
+
+(D) Important Considerations
+1. Avoid hardcoding. Don’t rely solely on the exact values from the provided slow input; think in terms of categories or thresholds that lead to slow execution.
+2. Avoid checks inside tight loops. Place checks in a way that does not significantly degrade performance.
+3. Focus on fuzzer utility. The checks should help a fuzzer detect slow performance triggers by hitting these conditions.
+
+(E) Problem Statement
+
+At first, let's define function f(x) as follows: $$$ \begin{matrix} f(x) & = & \left\{ \begin{matrix} x/2 & \mbox{if } x  is even \\\ x - 1 & \mbox{otherwise } \end{matrix} \right. \end{matrix} $$$
+
+We can see that if we choose some value v and will apply function f to it, then apply f to f(v), and so on, we'll eventually get 1. Let's write down all values we get in this process in a list and denote this list as path(v). For example, path(1) = [1], path(15) = [15, 14, 7, 6, 3, 2, 1], path(32) = [32, 16, 8, 4, 2, 1].
+
+Let's write all lists path(x) for every x from 1 to n. The question is next: what is the maximum value y such that y is contained in at least k different lists path(x)?
+
+Formally speaking, you need to find maximum y such that \left| \{ x ~|~ 1 ≤ x ≤ n, y ∈ path(x) \} \right| ≥ k.
+
+Input
+
+The first line contains two integers n and k (1 ≤ k ≤ n ≤ 10^{18}).
+
+Output
+
+Print the only integer — the maximum value that is contained in at least k paths.
+
+Examples
+
+Input
+
+
+11 3
+
+
+Output
+
+
+5
+
+
+Input
+
+
+11 6
+
+
+Output
+
+
+4
+
+
+Input
+
+
+20 20
+
+
+Output
+
+
+1
+
+
+Input
+
+
+14 5
+
+
+Output
+
+
+6
+
+
+Input
+
+
+1000000 100
+
+
+Output
+
+
+31248
+
+Note
+
+In the first example, the answer is 5, since 5 occurs in path(5), path(10) and path(11).
+
+In the second example, the answer is 4, since 4 occurs in path(4), path(5), path(8), path(9), path(10) and path(11).
+
+In the third example n = k, so the answer is 1, since 1 is the only number occuring in all paths for integers from 1 to 20.
+
+(F) Program Solving the Problem Statement
+
+#include <bits/stdc++.h>
+using namespace std;
+const int MAXN = 64 + 20;
+long long n, k;
+long long d[MAXN][3];
+vector<pair<long long, long long>> vec;
+map<long long, long long> ma;
+long long ln(long long a) {
+  long long l = 0;
+  while (a) {
+    a /= 2;
+    l++;
+  }
+  return l;
+}
+long long getnum(long long l) {
+  long long alen = ln(l), blen = ln(n);
+  memset(d, 0, sizeof(d));
+  if ((n >> (blen - alen)) > (l))
+    d[alen][0] = 1;
+  else if ((n >> (blen - alen)) == (l))
+    d[alen][1] = 1;
+  else if ((n >> (blen - alen)) < (l))
+    d[alen][2] = 1;
+  if ((l & 1) == 0 && (l + 1) <= n) {
+    if ((n >> (blen - alen)) > (l + 1))
+      d[alen][0] += 1;
+    else if ((n >> (blen - alen)) == (l + 1))
+      d[alen][1] += 1;
+    else if ((n >> (blen - alen)) < (l + 1))
+      d[alen][2] += 1;
+  }
+  long long ans = d[alen][0] + d[alen][1] + d[alen][2];
+  for (long long i = alen; i < blen; ++i) {
+    if ((n >> (blen - i - 1)) & 1) {
+      d[i + 1][0] = d[i][0] * 2 + d[i][1];
+      d[i + 1][2] = d[i][2] * 2;
+      d[i + 1][1] = d[i][1];
+    } else {
+      d[i + 1][0] = d[i][0] * 2;
+      d[i + 1][2] = d[i][2] * 2 + d[i][1];
+      d[i + 1][1] = d[i][1];
+    }
+    if (i != blen - 1) {
+      for (long long j = 0; j < 3; ++j) {
+        ans += d[i + 1][j];
+      }
+    } else {
+      for (long long j = 0; j < 2; ++j) {
+        ans += d[i + 1][j];
+      }
+    }
+  }
+  return ans;
+}
+int main() {
+  cin >> n >> k;
+  ma[1] = n;
+  long long maxn = 1;
+  for (long long m = n; m > 1;) {
+    vec.clear();
+    for (auto i : ma) {
+      vec.emplace_back(i.first, i.second);
+    }
+    for (auto i : vec) {
+      if ((i.second & 1) && getnum(i.second - 1) > maxn) {
+        ma[getnum(i.second - 1)] = i.second - 1;
+        maxn = getnum(i.second - 1);
+      }
+      if (!(i.second & 1) && i.second > 2 && getnum(i.second - 2) > maxn) {
+        ma[getnum(i.second - 2)] = i.second - 2;
+        maxn = getnum(i.second - 2);
+      }
+      if (maxn < getnum(i.second / 2)) {
+        ma[getnum(i.second / 2)] = i.second / 2;
+        maxn = getnum(i.second / 2);
+      }
+    }
+    for (auto i : ma) {
+      m = min(m, i.second);
+    }
+  }
+  vec.clear();
+  for (auto i : ma) {
+    vec.emplace_back(i.first, i.second);
+  }
+  int idx =
+      lower_bound(vec.begin(), vec.end(), pair<long long, long long>(k, 0)) -
+      vec.begin();
+  cout << vec[idx].second << endl;
+}
+
+
+(G) The Slow & Fast Inputs
+
+(G.1) Slow Input
+
+355757807895740076 1
+
+
+(G.2) Fast Input
+
+1 1
+
+
+(H) Hit Count Information of Slow Input and Fast Input (Aggregated):
+
+#include <bits/stdc++.h> /* line 1 slow_hit_count: 0, fast_hit_count: 0 */
+using namespace std; /* line 2 slow_hit_count: 0, fast_hit_count: 0 */
+const int MAXN = 64 + 20; /* line 3 slow_hit_count: 0, fast_hit_count: 0 */
+long long n, k; /* line 4 slow_hit_count: 0, fast_hit_count: 0 */
+long long d[MAXN][3]; /* line 5 slow_hit_count: 0, fast_hit_count: 0 */
+vector<pair<long long, long long>> vec; /* line 6 slow_hit_count: 0, fast_hit_count: 0 */
+map<long long, long long> ma; /* line 7 slow_hit_count: 0, fast_hit_count: 0 */
+long long ln(long long a) { /* line 8 slow_hit_count: 22778, fast_hit_count: 0 */
+  long long l = 0; /* line 9 slow_hit_count: 22778, fast_hit_count: 0 */
+  while (a) { /* line 10 slow_hit_count: 1144177, fast_hit_count: 0 */
+    a /= 2; /* line 11 slow_hit_count: 1121399, fast_hit_count: 0 */
+    l++; /* line 12 slow_hit_count: 1121399, fast_hit_count: 0 */
+  } /* line 13 slow_hit_count: 0, fast_hit_count: 0 */
+  return l; /* line 14 slow_hit_count: 22778, fast_hit_count: 0 */
+} /* line 15 slow_hit_count: 0, fast_hit_count: 0 */
+long long getnum(long long l) { /* line 16 slow_hit_count: 11389, fast_hit_count: 0 */
+  long long alen = ln(l), blen = ln(n); /* line 17 slow_hit_count: 11389, fast_hit_count: 0 */
+  memset(d, 0, sizeof(d)); /* line 18 slow_hit_count: 11389, fast_hit_count: 0 */
+  if ((n >> (blen - alen)) > (l)) /* line 19 slow_hit_count: 11389, fast_hit_count: 0 */
+    d[alen][0] = 1; /* line 20 slow_hit_count: 8512, fast_hit_count: 0 */
+  else if ((n >> (blen - alen)) == (l)) /* line 21 slow_hit_count: 2877, fast_hit_count: 0 */
+    d[alen][1] = 1; /* line 22 slow_hit_count: 2866, fast_hit_count: 0 */
+  else if ((n >> (blen - alen)) < (l)) /* line 23 slow_hit_count: 11, fast_hit_count: 0 */
+    d[alen][2] = 1; /* line 24 slow_hit_count: 11, fast_hit_count: 0 */
+  if ((l & 1) == 0 && (l + 1) <= n) { /* line 25 slow_hit_count: 11389, fast_hit_count: 0 */
+    if ((n >> (blen - alen)) > (l + 1)) /* line 26 slow_hit_count: 8588, fast_hit_count: 0 */
+      d[alen][0] += 1; /* line 27 slow_hit_count: 5679, fast_hit_count: 0 */
+    else if ((n >> (blen - alen)) == (l + 1)) /* line 28 slow_hit_count: 2909, fast_hit_count: 0 */
+      d[alen][1] += 1; /* line 29 slow_hit_count: 1814, fast_hit_count: 0 */
+    else if ((n >> (blen - alen)) < (l + 1)) /* line 30 slow_hit_count: 1095, fast_hit_count: 0 */
+      d[alen][2] += 1; /* line 31 slow_hit_count: 1095, fast_hit_count: 0 */
+  } /* line 32 slow_hit_count: 0, fast_hit_count: 0 */
+  long long ans = d[alen][0] + d[alen][1] + d[alen][2]; /* line 33 slow_hit_count: 11389, fast_hit_count: 0 */
+  for (long long i = alen; i < blen; ++i) { /* line 34 slow_hit_count: 233892, fast_hit_count: 0 */
+    if ((n >> (blen - i - 1)) & 1) { /* line 35 slow_hit_count: 222503, fast_hit_count: 0 */
+      d[i + 1][0] = d[i][0] * 2 + d[i][1]; /* line 36 slow_hit_count: 129431, fast_hit_count: 0 */
+      d[i + 1][2] = d[i][2] * 2; /* line 37 slow_hit_count: 129431, fast_hit_count: 0 */
+      d[i + 1][1] = d[i][1]; /* line 38 slow_hit_count: 129431, fast_hit_count: 0 */
+    } else { /* line 39 slow_hit_count: 0, fast_hit_count: 0 */
+      d[i + 1][0] = d[i][0] * 2; /* line 40 slow_hit_count: 93072, fast_hit_count: 0 */
+      d[i + 1][2] = d[i][2] * 2 + d[i][1]; /* line 41 slow_hit_count: 93072, fast_hit_count: 0 */
+      d[i + 1][1] = d[i][1]; /* line 42 slow_hit_count: 93072, fast_hit_count: 0 */
+    } /* line 43 slow_hit_count: 0, fast_hit_count: 0 */
+    if (i != blen - 1) { /* line 44 slow_hit_count: 222503, fast_hit_count: 0 */
+      for (long long j = 0; j < 3; ++j) { /* line 45 slow_hit_count: 845220, fast_hit_count: 0 */
+        ans += d[i + 1][j]; /* line 46 slow_hit_count: 633915, fast_hit_count: 0 */
+      } /* line 47 slow_hit_count: 0, fast_hit_count: 0 */
+    } else { /* line 48 slow_hit_count: 0, fast_hit_count: 0 */
+      for (long long j = 0; j < 2; ++j) { /* line 49 slow_hit_count: 33594, fast_hit_count: 0 */
+        ans += d[i + 1][j]; /* line 50 slow_hit_count: 22396, fast_hit_count: 0 */
+      } /* line 51 slow_hit_count: 0, fast_hit_count: 0 */
+    } /* line 52 slow_hit_count: 0, fast_hit_count: 0 */
+  } /* line 53 slow_hit_count: 0, fast_hit_count: 0 */
+  return ans; /* line 54 slow_hit_count: 11389, fast_hit_count: 0 */
+} /* line 55 slow_hit_count: 0, fast_hit_count: 0 */
+int main() { /* line 56 slow_hit_count: 1, fast_hit_count: 1 */
+  cin >> n >> k; /* line 57 slow_hit_count: 1, fast_hit_count: 1 */
+  ma[1] = n; /* line 58 slow_hit_count: 1, fast_hit_count: 1 */
+  long long maxn = 1; /* line 59 slow_hit_count: 1, fast_hit_count: 1 */
+  for (long long m = n; m > 1;) { /* line 60 slow_hit_count: 96, fast_hit_count: 1 */
+    vec.clear(); /* line 61 slow_hit_count: 95, fast_hit_count: 0 */
+    for (auto i : ma) { /* line 62 slow_hit_count: 5676, fast_hit_count: 0 */
+      vec.emplace_back(i.first, i.second); /* line 63 slow_hit_count: 5581, fast_hit_count: 0 */
+    } /* line 64 slow_hit_count: 0, fast_hit_count: 0 */
+    for (auto i : vec) { /* line 65 slow_hit_count: 5676, fast_hit_count: 0 */
+      if ((i.second & 1) && getnum(i.second - 1) > maxn) { /* line 66 slow_hit_count: 5581, fast_hit_count: 0 */
+        ma[getnum(i.second - 1)] = i.second - 1; /* line 67 slow_hit_count: 0, fast_hit_count: 0 */
+        maxn = getnum(i.second - 1); /* line 68 slow_hit_count: 0, fast_hit_count: 0 */
+      } /* line 69 slow_hit_count: 0, fast_hit_count: 0 */
+      if (!(i.second & 1) && i.second > 2 && getnum(i.second - 2) > maxn) { /* line 70 slow_hit_count: 5581, fast_hit_count: 0 */
+        ma[getnum(i.second - 2)] = i.second - 2; /* line 71 slow_hit_count: 57, fast_hit_count: 0 */
+        maxn = getnum(i.second - 2); /* line 72 slow_hit_count: 57, fast_hit_count: 0 */
+      } /* line 73 slow_hit_count: 0, fast_hit_count: 0 */
+      if (maxn < getnum(i.second / 2)) { /* line 74 slow_hit_count: 5581, fast_hit_count: 0 */
+        ma[getnum(i.second / 2)] = i.second / 2; /* line 75 slow_hit_count: 57, fast_hit_count: 0 */
+        maxn = getnum(i.second / 2); /* line 76 slow_hit_count: 57, fast_hit_count: 0 */
+      } /* line 77 slow_hit_count: 0, fast_hit_count: 0 */
+    } /* line 78 slow_hit_count: 0, fast_hit_count: 0 */
+    for (auto i : ma) { /* line 79 slow_hit_count: 5790, fast_hit_count: 0 */
+      m = min(m, i.second); /* line 80 slow_hit_count: 5695, fast_hit_count: 0 */
+    } /* line 81 slow_hit_count: 0, fast_hit_count: 0 */
+  } /* line 82 slow_hit_count: 0, fast_hit_count: 0 */
+  vec.clear(); /* line 83 slow_hit_count: 1, fast_hit_count: 1 */
+  for (auto i : ma) { /* line 84 slow_hit_count: 116, fast_hit_count: 2 */
+    vec.emplace_back(i.first, i.second); /* line 85 slow_hit_count: 115, fast_hit_count: 1 */
+  } /* line 86 slow_hit_count: 0, fast_hit_count: 0 */
+  int idx = /* line 87 slow_hit_count: 0, fast_hit_count: 0 */
+      lower_bound(vec.begin(), vec.end(), pair<long long, long long>(k, 0)) - /* line 88 slow_hit_count: 1, fast_hit_count: 1 */
+      vec.begin(); /* line 89 slow_hit_count: 1, fast_hit_count: 1 */
+  cout << vec[idx].second << endl; /* line 90 slow_hit_count: 1, fast_hit_count: 1 */
+} /* line 91 slow_hit_count: 1, fast_hit_count: 1 */
+
+
+assistant: To analyze the given C program and determine why it performs slowly for certain inputs, we'll proceed with the following tasks:
+
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+1. **Comparison of Line-Level Hit Counts**: 
+   - The function `getnum` shows significantly higher hit counts in the slow run, particularly lines 10-12 and within the loop starting at line 34. These are likely hotspots.
+   - The `while` loop starting at line 60 and subsequent loops within the `main` function (especially the loop at line 65) also show significantly more activity in the slow input.
+
+2. **Pinpointing Inefficient Lines/Functions**:
+   - The `ln` function is invoked frequently which calculates the logarithmic length: this could imply that repeated division operations are expensive.
+   - The `getnum` function is crucial. It contains multiple conditions and a nested loop that iterates over a range, aggregating values in the `ans` variable. This part is heavily hit for the slow input.
+   - Usage of map `ma` and vector `vec` to store and manipulate large amounts of data could be causing overhead.
+
+3. **Data Structure Interaction and Constraints**:
+   - The analysis primarily revolves around the manipulation and iteration of the map `ma` and vector `vec` for large values of `n`.
+   - Given that `n` can be extremely large (up to \(10^{18}\)), operations involving iterating over high ranges or deep recursive calls are costly.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on the code analysis and behavior on the slow input, we can derive the following performance-characterizing invariants:
+
+1. **Logarithmic Depth Calculation Invariant**:
+   - **Natural Language**: "Repeatedly calculating the logarithmic depth of a number through division can be expensive for large numbers, especially when nested within loops."
+   - **Condition**: When the loop or computation depends on the logarithmic depth of numbers close to the size of `n`.
+
+2. **Nested Conditional Logic and Iteration Invariant**:
+   - **Natural Language**: "When there is extensive use of nested conditionals and iterations over paths derived from large numbers, it may lead to performance degradation."
+   - **Condition**: If frequent path calculations and conditional checks are executed for numbers scaling to the order of `n`.
+
+3. **Data Structure Invariant with Large `n`**:
+   - **Natural Language**: "When the map and vector structures manage a vast range of elements due to large initial values for `n`, performance may degrade."
+   - **Condition**: If the data structures grow too large, leading to increased time for data manipulation and lookups.
+
+4. **Function Call Invariant**:
+   - **Natural Language**: "Heavy dependence on function calls that recursively or iteratively process large numbers can slow down the program."
+   - **Condition**: If functions like `getnum` are repeatedly called with large values, particularly near the upper limit of constraints.
+
+These invariants suggest performance hotspots and conditions under which the algorithm might experience slowdowns, even when `n` is within the input constraints but is close to its maximum value. The focus should be on reducing the depth of recursive or iterative operations and optimizing data structure usage for large-scale inputs.
+
+user: (A) Context
+
+You have already:
+1. Identified expensive code segments (Phase 1).
+2. Derived performance-characterizing invariants in natural language (Phase 2).
+
+Now, you MUST transform these invariants into runtime checks and integrate them into the given C++ program.
+
+(B) Tasks: Revisit the performance-characteristic invariants you inferred in natural langauge and write faithful, error-free C++ code snippets to implement them
+
+You MUST do perform this task in two phases and provide separate answers for both: First, translating the invariants into checker code in C++ (phase 3, below). Second, integrating those checker C++ code snippets with the original program for which you inferred those invariants (phase 4, below).   
+
+Phase 3: Implement the natural language invariants inferred previously, in C++. In this phase you are asked to, 
+1. For each natural language invariant from Phase 2, you MUST produce C++ code that checks the condition at runtime.
+2. You MUST NOT relax or trivialize the checker code implementing these performance-characterizing invariants. You MUST faithfully implement them as described. 
+3. Use the following template for writing checker code in C++ which could also be implemented as a helper function:
+```cpp
+    if (/* condition based on the NL invariant */) {
+        cerr << "Warning: Performance bottleneck condition triggered!" << endl;
+        abort();
+    }
+``` 
+
+Note that not all performance-characterizing invariants are about maximising input size. You may refer to the following examples for inspiration --- some maximising the input size, some not --- but do not simply replicate them exactly. Rather, use them as inspiration to infer and tailor performance-characterizing invariants tailored for the C++ code and problem statement you were asked to analize:
+
+Example Invariant #1:
+
+A potential slowdown arises when certain arrays or lists grow large, causing repeated operations. One way to detect this is to check if the size of a critical array arr (used in a nested loop) exceeds a broad threshold.
+
+Natural language description: “If arr is very large and used in nested loops, the code may repeat operations too many times.”
+
+Code implementing the natural language description:
+
+```cpp
+// Sample checker function
+void check_size_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: size_invariant triggered - array too large for nested loops" << endl;
+        abort();
+    }
+}
+
+// Usage in main or function
+int arrSize = arr.size();
+check_size_invariant(arrSize > 50000);
+```
+
+Example Invariant #2:
+
+Repeated sorting or searching on a data structure can degrade performance, especially if the data structure is large or if the sorting is called multiple times in a loop.
+
+Natural language description: “If a large portion of the code’s execution time is spent in sorting a data structure repeatedly, performance may degrade. Check if the data structure is frequently resorted or reprocessed when it has many elements.”
+
+Code implementing the natural language description:
+
+```cpp
+void check_sort_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: sort_invariant triggered - repeatedly sorting large data" << endl;
+        abort();
+    }
+}
+
+// After reading input or before sorting
+int elementCount = someDataStructure.size();
+check_sort_invariant(elementCount > 100000 && /* some condition indicating repeated sorts */);
+```
+
+Example Invariant #3:
+
+Recursion (e.g., graph traversal or the iterative version of it, recurssive dynamic programming, recurssive computation like computing the next Fibonacci number, etc.) can become expensive if it explores a large search space. A sign of this might be a high branching factor combined with a deep recursion depth.
+
+Natural language description: “If the recursion depth is likely to exceed a certain level or if many branches are processed at each recursive call, the computation may become very expensive.”
+
+```cpp
+void check_dfs_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: dfs_invariant triggered - high recursion depth or branching factor" << endl;
+        abort();
+    }
+}
+
+// Before calling dfs or inside setup
+check_dfs_invariant((maxDepthEstimate > 50) && (branchFactorEstimate > 10));
+```
+
+Example Invariant #4:
+
+Memory usage spikes or large matrix operations can slow down computation if array dimensions become too large. If the program initializes a 2D array based on input dimensions n and m, certain input combinations can trigger large memory footprints or nested loops over the entire matrix.
+
+Natural language description: “If n and m together exceed a threshold that implies large matrix computations, the program may slow significantly.”
+
+```cpp
+void check_matrix_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: matrix_invariant triggered - potentially large matrix operations" << endl;
+        abort();
+    }
+}
+
+// After reading n, m
+check_matrix_invariant(n * m > 1000000);
+```
+
+Example invariant #5:
+
+If a program runs an expensive function or heavy-weight code (e.g. memory allocation) repeatedly within a performance-critical loop or function, the overhead for calling that function can accumulate, slowing the program significantly.
+
+Natural langauge description: "If function foo is an expensive function to execute, and is called a large number of times in a loop or recursive function, the program may slow down significantly"
+
+```cpp
+void check_expensive_function_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: expensive function invariant triggered - excessive calls" << endl;
+        abort();
+    }
+}
+
+check_expensive_function_invariant(n > 1000000);  // arbitrary, but large threshold
+for (i = 0; i < n; ++i) { 
+    foo(); // expensive function
+}
+```
+
+
+Phase 4: Propagate and insert conditional checks. In this phase you are asked to,
+1. Place each check at an effective point in the control/data flow (e.g., after reading inputs, before heavy loops) so you do not add overhead in tight loops. Note that the checker code could also be implemented as a helper function.
+2. If multiple checks overlap, merge or adjust them carefully to avoid redundant warnings.
+3. Provide the final, instrumented C++ code in code fences. Ensure it compiles cleanly and runs without errors.
+4. For each inserted check, add a short comment explaining which bottleneck it detects.
+
+Note the following important considerations when translating the inferred performance-characterizing invariants into code and propagating the checkers to the most efective program point by instrumenting the original code: 
+1. Avoid hardcoding. Don’t rely solely on the exact values from the provided slow input; think in terms of categories or thresholds that lead to slow execution.
+2. In addition to the warning message, remember to insert an "abort()" statement at the end of the checker.
+3. Focus on fuzzer utility. The checks should help a fuzzer detect slow performance triggers by hitting these conditions.
+
+As a refresher, below you are provided with the same program statement and C++ code for which you already inferred performance-characterizing invariants:
+
+Problem statement:
+At first, let's define function f(x) as follows: $$$ \begin{matrix} f(x) & = & \left\{ \begin{matrix} x/2 & \mbox{if } x  is even \\\ x - 1 & \mbox{otherwise } \end{matrix} \right. \end{matrix} $$$
+
+We can see that if we choose some value v and will apply function f to it, then apply f to f(v), and so on, we'll eventually get 1. Let's write down all values we get in this process in a list and denote this list as path(v). For example, path(1) = [1], path(15) = [15, 14, 7, 6, 3, 2, 1], path(32) = [32, 16, 8, 4, 2, 1].
+
+Let's write all lists path(x) for every x from 1 to n. The question is next: what is the maximum value y such that y is contained in at least k different lists path(x)?
+
+Formally speaking, you need to find maximum y such that \left| \{ x ~|~ 1 ≤ x ≤ n, y ∈ path(x) \} \right| ≥ k.
+
+Input
+
+The first line contains two integers n and k (1 ≤ k ≤ n ≤ 10^{18}).
+
+Output
+
+Print the only integer — the maximum value that is contained in at least k paths.
+
+Examples
+
+Input
+
+
+11 3
+
+
+Output
+
+
+5
+
+
+Input
+
+
+11 6
+
+
+Output
+
+
+4
+
+
+Input
+
+
+20 20
+
+
+Output
+
+
+1
+
+
+Input
+
+
+14 5
+
+
+Output
+
+
+6
+
+
+Input
+
+
+1000000 100
+
+
+Output
+
+
+31248
+
+Note
+
+In the first example, the answer is 5, since 5 occurs in path(5), path(10) and path(11).
+
+In the second example, the answer is 4, since 4 occurs in path(4), path(5), path(8), path(9), path(10) and path(11).
+
+In the third example n = k, so the answer is 1, since 1 is the only number occuring in all paths for integers from 1 to 20.
+
+Solution (C++ code):
+{solution}
+
+
+assistant: ### Phase 3: Implement the Natural Language Invariants as C++ Checker Code
+
+Based on the previously derived natural language invariants, we'll translate them into C++ checker functions:
+
+#### Checker for Logarithmic Depth Calculation Invariant
+
+```cpp
+void check_logarithmic_depth_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: Logarithmic depth invariant triggered - costly repeated division operations!" << endl;
+        abort();
+    }
+}
+```
+
+#### Checker for Nested Conditional Logic and Iteration Invariant
+
+```cpp
+void check_nested_logic_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: Nested logic invariant triggered - extensive use of nested conditionals and iterations!" << endl;
+        abort();
+    }
+}
+```
+
+#### Checker for Data Structure Invariant with Large `n`
+
+```cpp
+void check_data_structure_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: Data structure invariant triggered - managing large data structures!" << endl;
+        abort();
+    }
+}
+```
+
+#### Checker for Function Call Invariant
+
+```cpp
+void check_function_call_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: Function call invariant triggered - repeated calls with large values!" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrate Checks into the Original C++ Program
+
+Below is the instrumented C++ code with the performance checkers integrated:
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+const int MAXN = 64 + 20;
+long long n, k;
+long long d[MAXN][3];
+vector<pair<long long, long long>> vec;
+map<long long, long long> ma;
+
+void check_logarithmic_depth_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: Logarithmic depth invariant triggered - costly repeated division operations!" << endl;
+        abort();
+    }
+}
+
+void check_nested_logic_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: Nested logic invariant triggered - extensive use of nested conditionals and iterations!" << endl;
+        abort();
+    }
+}
+
+void check_data_structure_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: Data structure invariant triggered - managing large data structures!" << endl;
+        abort();
+    }
+}
+
+void check_function_call_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: Function call invariant triggered - repeated calls with large values!" << endl;
+        abort();
+    }
+}
+
+long long ln(long long a) {
+    long long l = 0;
+    while (a) {
+        a /= 2;
+        l++;
+    }
+    return l;
+}
+
+long long getnum(long long l) {
+    long long alen = ln(l), blen = ln(n);
+    memset(d, 0, sizeof(d));
+    if ((n >> (blen - alen)) > (l))
+        d[alen][0] = 1;
+    else if ((n >> (blen - alen)) == (l))
+        d[alen][1] = 1;
+    else if ((n >> (blen - alen)) < (l))
+        d[alen][2] = 1;
+    if ((l & 1) == 0 && (l + 1) <= n) {
+        if ((n >> (blen - alen)) > (l + 1))
+            d[alen][0] += 1;
+        else if ((n >> (blen - alen)) == (l + 1))
+            d[alen][1] += 1;
+        else if ((n >> (blen - alen)) < (l + 1))
+            d[alen][2] += 1;
+    }
+    long long ans = d[alen][0] + d[alen][1] + d[alen][2];
+
+    // Check for nested logic invariant
+    check_nested_logic_invariant(blen > 60); // Example condition based on depth
+
+    for (long long i = alen; i < blen; ++i) {
+        if ((n >> (blen - i - 1)) & 1) {
+            d[i + 1][0] = d[i][0] * 2 + d[i][1];
+            d[i + 1][2] = d[i][2] * 2;
+            d[i + 1][1] = d[i][1];
+        } else {
+            d[i + 1][0] = d[i][0] * 2;
+            d[i + 1][2] = d[i][2] * 2 + d[i][1];
+            d[i + 1][1] = d[i][1];
+        }
+        if (i != blen - 1) {
+            for (long long j = 0; j < 3; ++j) {
+                ans += d[i + 1][j];
+            }
+        } else {
+            for (long long j = 0; j < 2; ++j) {
+                ans += d[i + 1][j];
+            }
+        }
+    }
+    return ans;
+}
+
+int main() {
+    cin >> n >> k;
+    ma[1] = n;
+
+    // Check for data structure invariant
+    check_data_structure_invariant(n > 1e12); // Example threshold
+
+    long long maxn = 1;
+    for (long long m = n; m > 1;) {
+        vec.clear();
+        for (auto i : ma) {
+            vec.emplace_back(i.first, i.second);
+        }
+        for (auto i : vec) {
+            if ((i.second & 1) && getnum(i.second - 1) > maxn) {
+                ma[getnum(i.second - 1)] = i.second - 1;
+                maxn = getnum(i.second - 1);
+            }
+            if (!(i.second & 1) && i.second > 2 && getnum(i.second - 2) > maxn) {
+                ma[getnum(i.second - 2)] = i.second - 2;
+                maxn = getnum(i.second - 2);
+            }
+            if (maxn < getnum(i.second / 2)) {
+                ma[getnum(i.second / 2)] = i.second / 2;
+                maxn = getnum(i.second / 2);
+            }
+
+            // Check for function call invariant
+            check_function_call_invariant(i.second > 1e12); // Example threshold
+        }
+        for (auto i : ma) {
+            m = min(m, i.second);
+        }
+    }
+    vec.clear();
+    for (auto i : ma) {
+        vec.emplace_back(i.first, i.second);
+    }
+    int idx =
+        lower_bound(vec.begin(), vec.end(), pair<long long, long long>(k, 0)) -
+        vec.begin();
+    cout << vec[idx].second << endl;
+}
+```
+
+In this code, the checkers are inserted at strategic points to monitor the conditions that can lead to performance bottlenecks, based on the previously derived natural language invariants. Each checker is intended to help monitor specific situations that may cause the algorithm to slow down significantly.
+

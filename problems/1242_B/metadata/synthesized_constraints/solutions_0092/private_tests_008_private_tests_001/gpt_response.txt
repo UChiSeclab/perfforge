@@ -1,0 +1,163 @@
+=== Invariants Response ===
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+1. **Line 6 (`fnd` function)**: This line has a significantly higher hit count during the slow run (42,705,727 hits) compared to the fast run (1 hit). This indicates that the `fnd` function (used for finding the set representative in the Union-Find data structure) is called very frequently, perhaps due to deep recursion caused by path compression.
+
+2. **Lines 8-9 (`unn` function)**: These lines, part of the union operation, have 10,000,000 hits in the slow run and 0 hits in the fast run. This suggests that the union operation is a performance bottleneck due to the large number of connections being processed.
+
+3. **Loop starting at Line 20**: This loop iterates over the number of vertices `n`, with hit counts indicating that the body of the loop (lines 21-52) executes 100,000 times in the slow run. Within this loop:
+   - **Line 38 (`while` loop)**: With 10,100,000 hit counts, this indicates heavy processing within the random selection logic.
+   - **Lines 41-46 (Binary search logic)**: These lines are hit many times (25,001,052 hits for Line 41), pointing to expensive operations possibly due to repeated binary search operations.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on the analysis above, here are performance-characterizing invariants:
+
+1. **Union-Find Operations**: "If the number of vertices `n` is large (close to the upper limit of 100,000) and most edges have weight 0 (i.e., `m` is small or zero), the computation of the minimum spanning tree becomes expensive due to excessive Union-Find operations. This is particularly due to the high number of find operations with deep path compressions."
+
+2. **Large Loops with Random Selection**: "When `n` is large, the loop iterating over vertices performs numerous operations, including random selection from potentially large ranges. This can cause a performance slowdown due to the repeated sorting and binary search operations within these loops."
+
+3. **Sparse Graphs**: "In sparse graphs where the number of edges with weight 1 (`m`) is very low compared to the possible number of edges in a complete graph, the algorithm may perform unnecessary operations over zero-weight edges. This inefficiency becomes noticeable as `n` approaches 100,000."
+
+By focusing on these conditions, we can predict scenarios that are likely to lead to performance degradation, helping guide optimizations or input filtering strategies in future uses of the code.
+
+=== Checker Response ===
+### Phase 3: Implement the Performance-Characterizing Invariants in C++
+
+Based on the natural language invariants derived earlier, here is the C++ code that checks these conditions at runtime:
+
+```cpp
+void check_union_find_invariant(int n, int m, int numFindCalls) {
+    // Invariant: If n is large and m is very small, Union-Find operations may be excessive
+    if (n > 50000 && m < 1000 && numFindCalls > 10000000) {
+        cerr << "Warning: Union-Find performance bottleneck condition triggered!" << endl;
+        abort();
+    }
+}
+
+void check_loop_invariant(int n, size_t totalConnections) {
+    // Invariant: Heavy processing in loops due to random selection in large graphs
+    if (n > 50000 && totalConnections > 100000000) {
+        cerr << "Warning: Loop performance bottleneck condition triggered!" << endl;
+        abort();
+    }
+}
+
+void check_sparse_graph_invariant(int n, int m) {
+    // Invariant: Sparse graph with mostly zero-weight edges may cause inefficiency
+    if (n > 50000 && m < n / 10) {
+        cerr << "Warning: Sparse graph performance inefficiency condition triggered!" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrate the Checker Code with the Original Program
+
+Here's how the checks can be integrated into the main C++ program:
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+int n, m;
+vector<int> adj[100005];
+int par[100005];
+
+int fnd(int u) {
+    return par[u] = par[u] == u ? u : fnd(par[u]);
+}
+
+void unn(int u, int v) {
+    u = fnd(u), v = fnd(v);
+    par[u] = v;
+}
+
+void check_union_find_invariant(int n, int m, int numFindCalls) {
+    if (n > 50000 && m < 1000 && numFindCalls > 10000000) {
+        cerr << "Warning: Union-Find performance bottleneck condition triggered!" << endl;
+        abort();
+    }
+}
+
+void check_loop_invariant(int n, size_t totalConnections) {
+    if (n > 50000 && totalConnections > 100000000) {
+        cerr << "Warning: Loop performance bottleneck condition triggered!" << endl;
+        abort();
+    }
+}
+
+void check_sparse_graph_invariant(int n, int m) {
+    if (n > 50000 && m < n / 10) {
+        cerr << "Warning: Sparse graph performance inefficiency condition triggered!" << endl;
+        abort();
+    }
+}
+
+int main() {
+    srand(time(0));
+    scanf("%d%d", &n, &m);
+    iota(par, par + n + 1, 0);
+    for (int a, b, i = 0; i < m; i++) {
+        scanf("%d%d", &a, &b);
+        adj[a].push_back(b);
+        adj[b].push_back(a);
+    }
+
+    int numFindCalls = 0;
+    size_t totalConnections = 0;
+
+    for (int i = 1; i <= n; i++) {
+        vector<int> conn;
+        adj[i].push_back(0);
+        adj[i].push_back(i);
+        adj[i].push_back(n + 1);
+        sort(adj[i].begin(), adj[i].end());
+
+        if (n - adj[i].size() + 2 <= 100) {
+            int nt = 1;
+            for (int j : adj[i]) {
+                while (nt < j) conn.push_back(nt++);
+                if (nt == j) nt++;
+            }
+        } else {
+            vector<pair<int, int>> rngs;
+            for (int j = 1; j < adj[i].size(); j++)
+                if (adj[i][j] - adj[i][j - 1] > 1)
+                    rngs.push_back({adj[i][j] - adj[i][j - 1] - 1, adj[i][j - 1] + 1});
+            for (int j = 1; j < rngs.size(); j++) rngs[j].first += rngs[j - 1].first;
+            while (conn.size() < min(100, n - 1)) {
+                int tk = rand() % rngs.back().first + 1;
+                int st = 0, en = rngs.size() - 1, mid;
+                while (st <= en) {
+                    mid = (st + en) >> 1;
+                    if (rngs[mid].first < tk)
+                        st = mid + 1;
+                    else
+                        en = mid - 1;
+                }
+                int ad = tk - (st ? rngs[st - 1].first : 0) + rngs[st].second - 1;
+                conn.push_back(ad);
+            }
+        }
+        totalConnections += conn.size();
+        for (int j : conn) {
+            unn(i, j);
+            numFindCalls++;
+        }
+    }
+
+    check_union_find_invariant(n, m, numFindCalls);
+    check_loop_invariant(n, totalConnections);
+    check_sparse_graph_invariant(n, m);
+
+    int ans = -1;
+    for (int i = 1; i <= n; i++) ans += (i == fnd(i));
+    printf("%d\n", ans);
+}
+```
+
+### Explanation of Code Placement:
+- **Union-Find Check**: Placed after the loop to monitor the number of `find` operations.
+- **Loop Check**: Evaluates total connections processed, placed outside the loop to avoid overhead.
+- **Sparse Graph Check**: Placed after reading inputs to ensure immediate detection of inefficient sparse graph scenarios.

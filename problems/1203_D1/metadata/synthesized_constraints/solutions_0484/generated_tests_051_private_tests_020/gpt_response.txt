@@ -1,0 +1,173 @@
+=== Invariants Response ===
+### Phase 1: Identification of Expensive or Inefficient Code Segments
+
+Upon comparing the line-level hit counts for the fast and slow inputs, we can identify the bottleneck:
+
+1. **Nested Loops**:
+   - Line 14 (`for (i = 0; i < l; i++)`): This loop runs 201 times for the slow input as opposed to only twice for the fast input.
+   - Line 15 (`for (j = i; j < l; j++)`): This inner loop runs 20,300 times for the slow input compared to twice for the fast input. This indicates a quadratic increase in execution due to nested loops.
+
+2. **Triple Loop Structure**:
+   - Line 17 (`for (k = 0; k < l; k++)`): This innermost loop runs an enormous 4,040,100 times for the slow input but only twice for the fast input, indicating a cubic complexity with respect to the size of `s`.
+
+3. **Conditional Checks**:
+   - Line 19 (`if (s[k] == t[c]) c++;`): This conditional triggers 2,666,600 times during the slow run, compared to no triggers during the fast run. This suggests that the program spends considerable time checking and counting matches between `s` and `t`.
+
+### Phase 2: Performance-Characterizing Invariants
+
+Based on the analysis, here are potential performance-characterizing invariants:
+
+1. **Invariant for Nested Loop Overhead**:
+   - **Natural Language Description**: "When the string `t` is much shorter than `s`, the number of iterations in the nested loops becomes excessive, leading to a cubic time complexity. This is particularly pronounced when the characters in `t` are sparsely distributed in `s`."
+   - **Abstract Threshold**: This slowdown is exacerbated as the length of `s` approaches the upper constraint of 200, and the character distribution sparsity increases, causing the triple nested loop to run extensively.
+
+2. **Invariant for Character Matching**:
+   - **Natural Language Description**: "If the proportion of characters in `t` compared to `s` is small, especially when `t` consists of characters that occur infrequently or are scattered in `s`, the computation required to match characters becomes more substantial."
+   - **Abstract Threshold**: When `|t|` is small relative to `|s|`, and `s` contains many characters not in `t`, the program has to do excessive matching checks across the length of `s`.
+
+3. **Invariant for Subsequence Verification**:
+   - **Natural Language Description**: "The verification for subsequences can become a bottleneck when there are long segments of `s` where no characters of `t` are found consecutively. This leads to repeated scanning of sections of `s` without progress in matching `t`."
+   - **Abstract Threshold**: The slowdown becomes significant when the density of `t`'s characters within `s` is low, thereby increasing the search space for each character of `t`.
+
+These invariants encapsulate the conditions under which the program's execution becomes inefficient due to excessive iterations and character checks, particularly as the input sizes approach their constraints. These statements help identify scenarios that might cause slow execution even in future test cases.
+
+=== Checker Response ===
+### Phase 3: Implementing Natural Language Invariants as C++ Checkers
+
+Below are the C++ checkers for the performance-characterizing invariants derived in natural language:
+
+1. **Checker for Nested Loop Overhead**:
+```cpp
+void check_nested_loop_invariant(int s_len, int t_len) {
+    if (s_len > 150 && t_len < 50) {
+        cerr << "Warning: Performance bottleneck due to excessive iterations in nested loops!" << endl;
+        abort();
+    }
+}
+```
+
+2. **Checker for Character Matching**:
+```cpp
+void check_character_matching_invariant(int s_len, int t_len, const string &s, const string &t) {
+    int count = 0;
+    for (char ch : t) {
+        if (s.find(ch) == string::npos) {
+            count++;
+        }
+    }
+    if (t_len < s_len / 4 && count > (s_len - t_len) / 2) {
+        cerr << "Warning: Performance bottleneck due to sparse distribution of t's characters in s!" << endl;
+        abort();
+    }
+}
+```
+
+3. **Checker for Subsequence Verification Overhead**:
+```cpp
+void check_subsequence_verification_invariant(int s_len, const string &s, const string &t) {
+    int t_index = 0;
+    int gaps = 0;
+    for (char ch : s) {
+        if (t_index < t.size() && ch == t[t_index]) {
+            t_index++;
+        } else {
+            gaps++;
+        }
+    }
+    if (gaps > s_len - t.size()) {
+        cerr << "Warning: Performance bottleneck due to excessive non-matching segments in s!" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrating Checkers into the Original C++ Program
+
+Now, let's integrate these checkers into the provided C++ code to detect the identified performance bottlenecks.
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+// Checker for nested loop overhead
+void check_nested_loop_invariant(int s_len, int t_len) {
+    if (s_len > 150 && t_len < 50) {
+        cerr << "Warning: Performance bottleneck due to excessive iterations in nested loops!" << endl;
+        abort();
+    }
+}
+
+// Checker for character matching sparsity
+void check_character_matching_invariant(int s_len, int t_len, const string &s, const string &t) {
+    int count = 0;
+    for (char ch : t) {
+        if (s.find(ch) == string::npos) {
+            count++;
+        }
+    }
+    if (t_len < s_len / 4 && count > (s_len - t_len) / 2) {
+        cerr << "Warning: Performance bottleneck due to sparse distribution of t's characters in s!" << endl;
+        abort();
+    }
+}
+
+// Checker for subsequence verification overhead
+void check_subsequence_verification_invariant(int s_len, const string &s, const string &t) {
+    int t_index = 0;
+    int gaps = 0;
+    for (char ch : s) {
+        if (t_index < t.size() && ch == t[t_index]) {
+            t_index++;
+        } else {
+            gaps++;
+        }
+    }
+    if (gaps > s_len - t.size()) {
+        cerr << "Warning: Performance bottleneck due to excessive non-matching segments in s!" << endl;
+        abort();
+    }
+}
+
+void solve() {
+    long long int i, j, k, c, ans = 0;
+    string s, t;
+    cin >> s >> t;
+    
+    // Get sizes of s and t
+    long long int l = s.size();
+    int t_len = t.size();
+    
+    // Insert Invariants Check before starting heavy computation
+    check_nested_loop_invariant(l, t_len);
+    check_character_matching_invariant(l, t_len, s, t);
+    check_subsequence_verification_invariant(l, s, t);
+
+    for (i = 0; i < l; i++) {
+        for (j = i; j < l; j++) {
+            c = 0;
+            for (k = 0; k < l; k++) {
+                if (k >= i && k <= j) continue;
+                if (s[k] == t[c]) c++;
+            }
+            if (c == t.size()) {
+                ans = max(ans, j - i + 1);
+            }
+        }
+    }
+    cout << ans << endl;
+    return;
+}
+
+int main() {
+    long long int q = 1;
+    while (q--) {
+        solve();
+    }
+    return 0;
+}
+```
+
+### Explanation
+
+- **Placement of Checks**: The checks are strategically placed after input reading and before the start of the computationally heavy nested loops. This ensures that aborts due to invariant violations occur before significant computation time is spent.
+- The checks use abstract conditions to catch potential performance bottlenecks based on the input size and character distribution, enhancing the program's robustness against slow inputs.

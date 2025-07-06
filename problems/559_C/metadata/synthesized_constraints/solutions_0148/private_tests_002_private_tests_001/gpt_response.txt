@@ -1,0 +1,209 @@
+=== Invariants Response ===
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+Based on the provided hit counts and the structure of the code, the following observations can be made about potential performance bottlenecks:
+
+1. **`powerpower` Function**: 
+   - The lines 9 through 28, which implement the `powerpower` function, are hit significantly more often during the slow input run. Notably, the loop at line 15 (`while (2 * counter <= power)`) and inside the loop (lines 16-18) are executed a much larger number of times with the slow input, indicating that this function is a potential bottleneck.
+
+2. **Factorial and Inverse Factorial Calculation**:
+   - Lines 75-80 calculate factorials and their modular inverses. The loops here iterate over `(h + w)` times, which can be very large (up to 200,000), and these operations are computationally expensive due to multiplication and the use of the `powerpower` function.
+
+3. **Dynamic Programming Approach in `waystone` Function**:
+   - The `waystone` function (lines 36-57) involves checking all given black cell coordinates to compute the number of paths dynamically. It seems efficient in terms of hit counts, but given its dependence on other costly operations (like `nchoosek` and recursive calls), it may still contribute to the overall performance issue under certain conditions.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on the analysis, here are some natural language performance-characterizing invariants:
+
+1. **Large Combinatorial Calculations**:
+   - "If both height `h` and width `w` are large, resulting in a high number of combinations `(h + w)`, the calculations involving factorials and their inverses may become computationally expensive, leading to slowdown."
+
+2. **Heavy Use of Modular Exponentiation**:
+   - "When the number of paths to evaluate involves many modular exponentiations (as required by factorial and inverse factorial calculations involving `powerpower`), the accumulated computational cost may cause a significant slowdown."
+
+3. **Large Number of Black Cells**:
+   - "If the number of black cells `n` is large and they form a dense cluster that constrains many potential paths, the recursive path calculation in `waystone` may become more complex and expensive."
+
+4. **Dense Intermediate Path Calculations**:
+   - "If there are numerous intermediary paths blocked by black cells that require recalculating combinations, it can trigger excessive recursive computations with costly combinatorial evaluations, hampering performance."
+
+These invariants abstractly describe potential performance triggers based on the problem constraints and observed code behavior, aiming to help understand under which conditions the code might slow down.
+
+=== Checker Response ===
+### Phase 3: Implement the Natural Language Invariants in C++
+
+Here are the C++ code snippets to implement the performance-characterizing invariants:
+
+1. **Large Combinatorial Calculations**:
+   ```cpp
+   void check_large_combinatorial_calculations(unsigned long long h, unsigned long long w) {
+       if (h + w > 150000) {  // Threshold based on problem constraints.
+           cerr << "Warning: Large combinatorial calculations - Potential performance bottleneck!" << endl;
+           abort();
+       }
+   }
+   ```
+
+2. **Heavy Use of Modular Exponentiation**:
+   ```cpp
+   void check_modular_exponentiation_usage(unsigned long long h, unsigned long long w) {
+       if (h + w > 150000) {  // Similar threshold as above since it derives from factorial calculations.
+           cerr << "Warning: Heavy modular exponentiation usage - Potential performance bottleneck!" << endl;
+           abort();
+       }
+   }
+   ```
+
+3. **Large Number of Black Cells**:
+   ```cpp
+   void check_large_black_cell_density(unsigned long long n) {
+       if (n > 1500) {  // Threshold to consider many black cells potentially affecting path dynamics.
+           cerr << "Warning: High density of black cells - Potential performance bottleneck!" << endl;
+           abort();
+       }
+   }
+   ```
+
+4. **Dense Intermediate Path Calculations**:
+   ```cpp
+   void check_dense_intermediate_path_calculations(unsigned long long h, unsigned long long w, unsigned long long n) {
+       if ((h + w > 150000) && (n > 1500)) {  // Combination of constraints indicating dense paths.
+           cerr << "Warning: Dense intermediate path calculations - Potential performance bottleneck!" << endl;
+           abort();
+       }
+   }
+   ```
+
+### Phase 4: Integrate Checker Code with the Original Program
+
+Here is the original C++ program with the integrated runtime checks:
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+unsigned long long h, w, n;
+vector<unsigned long long> factorials;
+vector<pair<int, int> > coords;
+unsigned long long primaldialga = 1000000007;
+vector<unsigned long long> invfact;
+vector<unsigned long long> coorddp;
+
+unsigned long long powerpower(unsigned long long s, unsigned long long power) {
+    if (power == 0) return 1;
+    unsigned long long counter = 1;
+    unsigned long long acc = s;
+    vector<unsigned long long> memo;
+    memo.push_back(acc);
+    while (2 * counter <= power) {
+        counter *= 2;
+        acc = (acc * acc) % primaldialga;
+        memo.push_back(acc);
+    }
+    acc = 1;
+    int tracker = 0;
+    while (power != 0) {
+        if (power % 2 == 1) acc = (acc * memo[tracker]) % primaldialga;
+        tracker++;
+        power /= 2;
+    }
+    acc %= primaldialga;
+    return acc;
+}
+
+unsigned long long nchoosek(int n, int k) {
+    unsigned long long step1 = factorials[n];
+    unsigned long long step2 = (invfact[k] * invfact[n - k]) % primaldialga;
+    unsigned long long step3 = (step1 * step2) % primaldialga;
+    return step3;
+}
+
+unsigned long long waystone(int coordindex) {
+    if (coorddp[coordindex] != -1) return coorddp[coordindex];
+    pair<int, int> tangerage = coords[coordindex];
+    unsigned long long acc = 0;
+    for (int i = 0; i < n; i++) {
+        if (coords[i].first <= tangerage.first &&
+            coords[i].second <= tangerage.second &&
+            (coords[i].first != tangerage.first ||
+             coords[i].second != tangerage.second)) {
+            unsigned long long intermed = waystone(i);
+            unsigned long long travers =
+                nchoosek((tangerage.first - coords[i].first) +
+                         (tangerage.second - coords[i].second),
+                         tangerage.first - coords[i].first);
+            unsigned long long toAdd = (intermed * travers) % primaldialga;
+            acc = (acc + toAdd) % primaldialga;
+        }
+    }
+    unsigned long long totalit =
+        nchoosek(tangerage.first + tangerage.second - 2, tangerage.first - 1);
+    coorddp[coordindex] = (totalit + (primaldialga - acc)) % primaldialga;
+    return coorddp[coordindex];
+}
+
+void check_large_combinatorial_calculations(unsigned long long h, unsigned long long w) {
+    if (h + w > 150000) {  // Threshold based on problem constraints.
+        cerr << "Warning: Large combinatorial calculations - Potential performance bottleneck!" << endl;
+        abort();
+    }
+}
+
+void check_modular_exponentiation_usage(unsigned long long h, unsigned long long w) {
+    if (h + w > 150000) {  // Similar threshold as above since it derives from factorial calculations.
+        cerr << "Warning: Heavy modular exponentiation usage - Potential performance bottleneck!" << endl;
+        abort();
+    }
+}
+
+void check_large_black_cell_density(unsigned long long n) {
+    if (n > 1500) {  // Threshold to consider many black cells potentially affecting path dynamics.
+        cerr << "Warning: High density of black cells - Potential performance bottleneck!" << endl;
+        abort();
+    }
+}
+
+void check_dense_intermediate_path_calculations(unsigned long long h, unsigned long long w, unsigned long long n) {
+    if ((h + w > 150000) && (n > 1500)) {  // Combination of constraints indicating dense paths.
+        cerr << "Warning: Dense intermediate path calculations - Potential performance bottleneck!" << endl;
+        abort();
+    }
+}
+
+int main() {
+    cin >> h >> w >> n;
+    check_large_combinatorial_calculations(h, w);
+    check_modular_exponentiation_usage(h, w);
+    check_large_black_cell_density(n);
+    check_dense_intermediate_path_calculations(h, w, n);
+
+    coords = vector<pair<int, int> >(n + 1);
+    for (int i = 0; i < n; i++) {
+        cin >> coords[i].first >> coords[i].second;
+        if (coords[i].first == h && coords[i].second == w) {
+            cout << 0 << endl;
+            return 0;
+        }
+    }
+    coords[n].first = h;
+    coords[n].second = w;
+    factorials = vector<unsigned long long>(h + w + 1);
+    invfact = vector<unsigned long long>(h + w + 1);
+    coorddp = vector<unsigned long long>(n + 1, -1);
+    factorials[0] = 1;
+    for (int i = 1; i <= h + w; i++) {
+        factorials[i] = i * factorials[i - 1];
+        factorials[i] %= primaldialga;
+    }
+    for (int i = 0; i <= h + w; i++) {
+        invfact[i] = powerpower(factorials[i], primaldialga - 2);
+    }
+    cout << waystone(n) << endl;
+    return 0;
+}
+```
+
+**Comments**:
+- The checks are placed after reading the input to assess potential performance bottlenecks based on the input size and configuration.
+- Each check aborts if the conditions that could lead to a slowdown are detected, providing a warning message to help diagnose performance issues.

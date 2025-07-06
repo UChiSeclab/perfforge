@@ -1,0 +1,679 @@
+system: You are a helpful assistant good at coding.
+
+user: (A) Context
+
+You are an experienced C software engineer focusing on performance bottlenecks. You have:
+1. A problem statement describing a task or algorithm (with constraints such as n <= 100).
+2. A C program that implements a solution to that problem.
+3. Two inputs: a “fast” input that completes quickly, and a “slow” input that takes much longer—both inputs have similar size/structure.
+4. Line-level hit counts for both runs, showing which lines get hit significantly more often on the slow input.
+
+Your goal is to diagnose why the program runs slowly for the slow input and derive conditions or invariants that capture what triggers this slowdown.
+
+(B) Tasks: Analyze the given code and generate performance-characterizing invariants in natural language
+
+Phase 1: Identify expensive or onefficient code segments. In this phase you are asked to,
+1. Compare line-level hit counts between the fast and slow runs.
+2. Pinpoint lines or functions that get significantly more hits under the slow input.
+3. Infer how these lines might be interacting with data structures, loops, recursion, etc., especially as they relate to the input constraints (e.g., n <= 100).
+
+Phase 2: Derive performance-characterizing invariants (natural language). In this phase you are asked to,
+1. Generate natural language statements that describe conditions under which the program likely enters a slow path.
+2. Avoid using specific numeric values from the slow input; abstract them into categories or thresholds. However, make sure those thresholds adhere to the input constraints of the problem.
+3. Correlate these conditions strongly to input patterns (e.g., “when n is close to 100 and there is a nested loop,” or “when a data structure is repeatedly sorted”).
+4. Ensure your statements are broad enough to catch possible future slow scenarios, but still reflect realistic triggers given the constraints (like n <= 100).
+
+Note that not all performance-characterizing invariants are about maximising input size. You may refer to the following examples for inspiration --- some maximising the input size, some not --- but do not simply replicate them exactly. Rather, use them as inspiration to infer and tailor performance-characterizing invariants tailored for the C code and problem statement you were asked to analize:
+
+Example Invariant #1:
+
+A potential slowdown arises when certain arrays or lists grow large, causing repeated operations. One way to detect this is to check if the size of a critical array arr (used in a nested loop) exceeds a broad threshold.
+
+Natural language description: “If arr is very large and used in nested loops, the code may repeat operations too many times.”
+
+Code implementing the natural language description:
+
+```cpp
+// Sample checker function
+void check_size_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: size_invariant triggered - array too large for nested loops" << endl;
+        abort();
+    }
+}
+
+// Usage in main or function
+int arrSize = arr.size();
+check_size_invariant(arrSize > 50000);
+```
+
+Example Invariant #2:
+
+Repeated sorting or searching on a data structure can degrade performance, especially if the data structure is large or if the sorting is called multiple times in a loop.
+
+Natural language description: “If a large portion of the code’s execution time is spent in sorting a data structure repeatedly, performance may degrade. Check if the data structure is frequently resorted or reprocessed when it has many elements.”
+
+Code implementing the natural language description:
+
+```cpp
+void check_sort_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: sort_invariant triggered - repeatedly sorting large data" << endl;
+        abort();
+    }
+}
+
+// After reading input or before sorting
+int elementCount = someDataStructure.size();
+check_sort_invariant(elementCount > 100000 && /* some condition indicating repeated sorts */);
+```
+
+Example Invariant #3:
+
+Recursion (e.g., graph traversal or the iterative version of it, recurssive dynamic programming, recurssive computation like computing the next Fibonacci number, etc.) can become expensive if it explores a large search space. A sign of this might be a high branching factor combined with a deep recursion depth.
+
+Natural language description: “If the recursion depth is likely to exceed a certain level or if many branches are processed at each recursive call, the computation may become very expensive.”
+
+```cpp
+void check_dfs_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: dfs_invariant triggered - high recursion depth or branching factor" << endl;
+        abort();
+    }
+}
+
+// Before calling dfs or inside setup
+check_dfs_invariant((maxDepthEstimate > 50) && (branchFactorEstimate > 10));
+```
+
+Example Invariant #4:
+
+Memory usage spikes or large matrix operations can slow down computation if array dimensions become too large. If the program initializes a 2D array based on input dimensions n and m, certain input combinations can trigger large memory footprints or nested loops over the entire matrix.
+
+Natural language description: “If n and m together exceed a threshold that implies large matrix computations, the program may slow significantly.”
+
+```cpp
+void check_matrix_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: matrix_invariant triggered - potentially large matrix operations" << endl;
+        abort();
+    }
+}
+
+// After reading n, m
+check_matrix_invariant(n * m > 1000000);
+```
+
+Example invariant #5:
+
+If a program runs an expensive function or heavy-weight code (e.g. memory allocation) repeatedly within a performance-critical loop or function, the overhead for calling that function can accumulate, slowing the program significantly.
+
+Natural langauge description: "If function foo is an expensive function to execute, and is called a large number of times in a loop or recursive function, the program may slow down significantly"
+
+```cpp
+void check_expensive_function_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: expensive function invariant triggered - excessive calls" << endl;
+        abort();
+    }
+}
+
+check_expensive_function_invariant(n > 1000000);  // arbitrary, but large threshold
+for (i = 0; i < n; ++i) { 
+    foo(); // expensive function
+}
+```
+
+(C) Output Requirements
+1. Provide a list of natural language performance invariants explaining under what conditions the code slows down.
+2. Do not mention or rely on exact values from the provided slow input.
+3. Use or suggest threshold values that align with problem constraints (e.g., n <= 100).
+4. The output should be a concise, descriptive set of statements about performance triggers.
+
+(D) Important Considerations
+1. Avoid hardcoding. Don’t rely solely on the exact values from the provided slow input; think in terms of categories or thresholds that lead to slow execution.
+2. Avoid checks inside tight loops. Place checks in a way that does not significantly degrade performance.
+3. Focus on fuzzer utility. The checks should help a fuzzer detect slow performance triggers by hitting these conditions.
+
+(E) Problem Statement
+
+Let's introduce some definitions that will be needed later.
+
+Let prime(x) be the set of prime divisors of x. For example, prime(140) = \{ 2, 5, 7 \}, prime(169) = \{ 13 \}.
+
+Let g(x, p) be the maximum possible integer p^k where k is an integer such that x is divisible by p^k. For example:
+
+  * g(45, 3) = 9 (45 is divisible by 3^2=9 but not divisible by 3^3=27), 
+  * g(63, 7) = 7 (63 is divisible by 7^1=7 but not divisible by 7^2=49). 
+
+
+
+Let f(x, y) be the product of g(y, p) for all p in prime(x). For example:
+
+  * f(30, 70) = g(70, 2) ⋅ g(70, 3) ⋅ g(70, 5) = 2^1 ⋅ 3^0 ⋅ 5^1 = 10, 
+  * f(525, 63) = g(63, 3) ⋅ g(63, 5) ⋅ g(63, 7) = 3^2 ⋅ 5^0 ⋅ 7^1 = 63. 
+
+
+
+You have integers x and n. Calculate f(x, 1) ⋅ f(x, 2) ⋅ … ⋅ f(x, n) mod{(10^{9} + 7)}.
+
+Input
+
+The only line contains integers x and n (2 ≤ x ≤ 10^{9}, 1 ≤ n ≤ 10^{18}) — the numbers used in formula.
+
+Output
+
+Print the answer.
+
+Examples
+
+Input
+
+
+10 2
+
+
+Output
+
+
+2
+
+
+Input
+
+
+20190929 1605
+
+
+Output
+
+
+363165664
+
+
+Input
+
+
+947 987654321987654321
+
+
+Output
+
+
+593574252
+
+Note
+
+In the first example, f(10, 1) = g(1, 2) ⋅ g(1, 5) = 1, f(10, 2) = g(2, 2) ⋅ g(2, 5) = 2.
+
+In the second example, actual value of formula is approximately 1.597 ⋅ 10^{171}. Make sure you print the answer modulo (10^{9} + 7).
+
+In the third example, be careful about overflow issue.
+
+(F) Program Solving the Problem Statement
+
+#include <bits/stdc++.h>
+using namespace std;
+long long int Mod = 1000000000 + 7;
+long long int binpow(long long int a, long long int n) {
+  long long int res = 1;
+  while (n) {
+    if (n & 1) res *= a, res %= Mod;
+    a *= a;
+    a %= Mod;
+    n >>= 1;
+  }
+  return res;
+}
+int main() {
+  long long int x, n;
+  cin >> x >> n;
+  long long int get = x;
+  vector<long long int> dels;
+  for (int i = 2; i <= sqrt(x); i++) {
+    if (get % i == 0) {
+      dels.push_back(i);
+      while (get % i == 0) get /= i;
+    }
+  }
+  if (get > 1) dels.push_back(get);
+  long long int ans = 1;
+  for (int i = 0; i < dels.size(); i++) {
+    long long int power = 0, curr = n;
+    do {
+      power += curr / dels[i];
+      curr /= dels[i];
+    } while (curr);
+    ans *= binpow(dels[i] % Mod, power);
+    ans %= Mod;
+  }
+  cout << ans;
+}
+
+
+(G) The Slow & Fast Inputs
+
+(G.1) Slow Input
+
+1000000000 1000000000000000000
+
+
+(G.2) Fast Input
+
+139 1000000000000000000
+
+
+(H) Hit Count Information of Slow Input and Fast Input (Aggregated):
+
+#include <bits/stdc++.h> /* line 1 slow_hit_count: 0, fast_hit_count: 0 */
+using namespace std; /* line 2 slow_hit_count: 0, fast_hit_count: 0 */
+long long int Mod = 1000000000 + 7; /* line 3 slow_hit_count: 0, fast_hit_count: 0 */
+long long int binpow(long long int a, long long int n) { /* line 4 slow_hit_count: 2, fast_hit_count: 1 */
+  long long int res = 1; /* line 5 slow_hit_count: 2, fast_hit_count: 1 */
+  while (n) { /* line 6 slow_hit_count: 120, fast_hit_count: 54 */
+    if (n & 1) res *= a, res %= Mod; /* line 7 slow_hit_count: 118, fast_hit_count: 53 */
+    a *= a; /* line 8 slow_hit_count: 118, fast_hit_count: 53 */
+    a %= Mod; /* line 9 slow_hit_count: 118, fast_hit_count: 53 */
+    n >>= 1; /* line 10 slow_hit_count: 118, fast_hit_count: 53 */
+  } /* line 11 slow_hit_count: 0, fast_hit_count: 0 */
+  return res; /* line 12 slow_hit_count: 2, fast_hit_count: 1 */
+} /* line 13 slow_hit_count: 0, fast_hit_count: 0 */
+int main() { /* line 14 slow_hit_count: 1, fast_hit_count: 1 */
+  long long int x, n; /* line 15 slow_hit_count: 0, fast_hit_count: 0 */
+  cin >> x >> n; /* line 16 slow_hit_count: 1, fast_hit_count: 1 */
+  long long int get = x; /* line 17 slow_hit_count: 1, fast_hit_count: 1 */
+  vector<long long int> dels; /* line 18 slow_hit_count: 2, fast_hit_count: 2 */
+  for (int i = 2; i <= sqrt(x); i++) { /* line 19 slow_hit_count: 31622, fast_hit_count: 11 */
+    if (get % i == 0) { /* line 20 slow_hit_count: 31621, fast_hit_count: 10 */
+      dels.push_back(i); /* line 21 slow_hit_count: 2, fast_hit_count: 0 */
+      while (get % i == 0) get /= i; /* line 22 slow_hit_count: 20, fast_hit_count: 0 */
+    } /* line 23 slow_hit_count: 0, fast_hit_count: 0 */
+  } /* line 24 slow_hit_count: 0, fast_hit_count: 0 */
+  if (get > 1) dels.push_back(get); /* line 25 slow_hit_count: 1, fast_hit_count: 1 */
+  long long int ans = 1; /* line 26 slow_hit_count: 1, fast_hit_count: 1 */
+  for (int i = 0; i < dels.size(); i++) { /* line 27 slow_hit_count: 3, fast_hit_count: 2 */
+    long long int power = 0, curr = n; /* line 28 slow_hit_count: 2, fast_hit_count: 1 */
+    do { /* line 29 slow_hit_count: 84, fast_hit_count: 8 */
+      power += curr / dels[i]; /* line 30 slow_hit_count: 86, fast_hit_count: 9 */
+      curr /= dels[i]; /* line 31 slow_hit_count: 86, fast_hit_count: 9 */
+    } while (curr); /* line 32 slow_hit_count: 86, fast_hit_count: 9 */
+    ans *= binpow(dels[i] % Mod, power); /* line 33 slow_hit_count: 2, fast_hit_count: 1 */
+    ans %= Mod; /* line 34 slow_hit_count: 2, fast_hit_count: 1 */
+  } /* line 35 slow_hit_count: 0, fast_hit_count: 0 */
+  cout << ans; /* line 36 slow_hit_count: 1, fast_hit_count: 1 */
+} /* line 37 slow_hit_count: 1, fast_hit_count: 1 */
+
+
+assistant: To analyze the performance bottlenecks in the given C program, let's go through the process in two phases: identifying inefficient code segments and deriving performance-characterizing invariants.
+
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+1. **Line-Level Hit Count Analysis**:
+   - The loop in line 19 (`for (int i = 2; i <= sqrt(x); i++)`) has a much higher hit count for the slow input (31622) compared to the fast input (11). This indicates a significant performance difference due to this loop.
+   - The `binpow` function (lines 4-13) is called with much higher frequency for the slow input (120 hits for `while (n)` and related lines) than for the fast input (54 hits).
+
+2. **Critical Code Segments**:
+   - **Prime Factorization Loop**: The loop on line 19 is responsible for determining the prime factors of `x`. This loop runs up to `sqrt(x)` times, and for large values of `x` with small factors, it will have a higher number of iterations.
+   - **Power Calculation Loop**: The loop starting at line 29 calculates the power for each prime factor. The inner computation (`curr / dels[i]`) is performed multiple times, depending on the size and distribution of `n` and the prime factors.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+1. **Invariant - Prime Factorization Overhead**:
+   - **Natural Language Description**: "If `x` has a large number of small prime factors, the prime factorization loop may execute many iterations, leading to a slowdown. This is exacerbated when `x` is large with a high number of small divisors."
+   - **Threshold Suggestion**: The loop will be slower if `x` has small factors near its square root.
+
+2. **Invariant - Power Calculation Overhead**:
+   - **Natural Language Description**: "If `n` is significantly large and divided many times by small prime factors of `x`, the computation of power in `f(x, y)` for each divisor becomes expensive. The slowdown occurs when `n` is repeatedly divided until it becomes less than any of the prime factors."
+   - **Threshold Suggestion**: The slowdown becomes apparent if the power calculation loop iterates many times, especially when `n` is close to its upper bound and consists of many repeated divisions.
+
+3. **Invariant - Repeated Binary Exponentiation**:
+   - **Natural Language Description**: "If the binary exponentiation function is called frequently due to many prime factors and high powers, this contributes to the cumulative computation time."
+   - **Threshold Suggestion**: This function shows performance issues when significantly large powers are computed for several prime factors.
+
+### Conclusion
+
+The slow input primarily results in more iterations through loops related to factorization and power calculations, which are exacerbated by the size and characteristics of `x` and `n`. The proposed invariants capture the conditions that lead to these slow paths, providing a basis for optimizing the algorithm or detecting potential future performance issues.
+
+user: (A) Context
+
+You have already:
+1. Identified expensive code segments (Phase 1).
+2. Derived performance-characterizing invariants in natural language (Phase 2).
+
+Now, you MUST transform these invariants into runtime checks and integrate them into the given C++ program.
+
+(B) Tasks: Revisit the performance-characteristic invariants you inferred in natural langauge and write faithful, error-free C++ code snippets to implement them
+
+You MUST do perform this task in two phases and provide separate answers for both: First, translating the invariants into checker code in C++ (phase 3, below). Second, integrating those checker C++ code snippets with the original program for which you inferred those invariants (phase 4, below).   
+
+Phase 3: Implement the natural language invariants inferred previously, in C++. In this phase you are asked to, 
+1. For each natural language invariant from Phase 2, you MUST produce C++ code that checks the condition at runtime.
+2. You MUST NOT relax or trivialize the checker code implementing these performance-characterizing invariants. You MUST faithfully implement them as described. 
+3. Use the following template for writing checker code in C++ which could also be implemented as a helper function:
+```cpp
+    if (/* condition based on the NL invariant */) {
+        cerr << "Warning: Performance bottleneck condition triggered!" << endl;
+        abort();
+    }
+``` 
+
+Note that not all performance-characterizing invariants are about maximising input size. You may refer to the following examples for inspiration --- some maximising the input size, some not --- but do not simply replicate them exactly. Rather, use them as inspiration to infer and tailor performance-characterizing invariants tailored for the C++ code and problem statement you were asked to analize:
+
+Example Invariant #1:
+
+A potential slowdown arises when certain arrays or lists grow large, causing repeated operations. One way to detect this is to check if the size of a critical array arr (used in a nested loop) exceeds a broad threshold.
+
+Natural language description: “If arr is very large and used in nested loops, the code may repeat operations too many times.”
+
+Code implementing the natural language description:
+
+```cpp
+// Sample checker function
+void check_size_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: size_invariant triggered - array too large for nested loops" << endl;
+        abort();
+    }
+}
+
+// Usage in main or function
+int arrSize = arr.size();
+check_size_invariant(arrSize > 50000);
+```
+
+Example Invariant #2:
+
+Repeated sorting or searching on a data structure can degrade performance, especially if the data structure is large or if the sorting is called multiple times in a loop.
+
+Natural language description: “If a large portion of the code’s execution time is spent in sorting a data structure repeatedly, performance may degrade. Check if the data structure is frequently resorted or reprocessed when it has many elements.”
+
+Code implementing the natural language description:
+
+```cpp
+void check_sort_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: sort_invariant triggered - repeatedly sorting large data" << endl;
+        abort();
+    }
+}
+
+// After reading input or before sorting
+int elementCount = someDataStructure.size();
+check_sort_invariant(elementCount > 100000 && /* some condition indicating repeated sorts */);
+```
+
+Example Invariant #3:
+
+Recursion (e.g., graph traversal or the iterative version of it, recurssive dynamic programming, recurssive computation like computing the next Fibonacci number, etc.) can become expensive if it explores a large search space. A sign of this might be a high branching factor combined with a deep recursion depth.
+
+Natural language description: “If the recursion depth is likely to exceed a certain level or if many branches are processed at each recursive call, the computation may become very expensive.”
+
+```cpp
+void check_dfs_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: dfs_invariant triggered - high recursion depth or branching factor" << endl;
+        abort();
+    }
+}
+
+// Before calling dfs or inside setup
+check_dfs_invariant((maxDepthEstimate > 50) && (branchFactorEstimate > 10));
+```
+
+Example Invariant #4:
+
+Memory usage spikes or large matrix operations can slow down computation if array dimensions become too large. If the program initializes a 2D array based on input dimensions n and m, certain input combinations can trigger large memory footprints or nested loops over the entire matrix.
+
+Natural language description: “If n and m together exceed a threshold that implies large matrix computations, the program may slow significantly.”
+
+```cpp
+void check_matrix_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: matrix_invariant triggered - potentially large matrix operations" << endl;
+        abort();
+    }
+}
+
+// After reading n, m
+check_matrix_invariant(n * m > 1000000);
+```
+
+Example invariant #5:
+
+If a program runs an expensive function or heavy-weight code (e.g. memory allocation) repeatedly within a performance-critical loop or function, the overhead for calling that function can accumulate, slowing the program significantly.
+
+Natural langauge description: "If function foo is an expensive function to execute, and is called a large number of times in a loop or recursive function, the program may slow down significantly"
+
+```cpp
+void check_expensive_function_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: expensive function invariant triggered - excessive calls" << endl;
+        abort();
+    }
+}
+
+check_expensive_function_invariant(n > 1000000);  // arbitrary, but large threshold
+for (i = 0; i < n; ++i) { 
+    foo(); // expensive function
+}
+```
+
+
+Phase 4: Propagate and insert conditional checks. In this phase you are asked to,
+1. Place each check at an effective point in the control/data flow (e.g., after reading inputs, before heavy loops) so you do not add overhead in tight loops. Note that the checker code could also be implemented as a helper function.
+2. If multiple checks overlap, merge or adjust them carefully to avoid redundant warnings.
+3. Provide the final, instrumented C++ code in code fences. Ensure it compiles cleanly and runs without errors.
+4. For each inserted check, add a short comment explaining which bottleneck it detects.
+
+Note the following important considerations when translating the inferred performance-characterizing invariants into code and propagating the checkers to the most efective program point by instrumenting the original code: 
+1. Avoid hardcoding. Don’t rely solely on the exact values from the provided slow input; think in terms of categories or thresholds that lead to slow execution.
+2. In addition to the warning message, remember to insert an "abort()" statement at the end of the checker.
+3. Focus on fuzzer utility. The checks should help a fuzzer detect slow performance triggers by hitting these conditions.
+
+As a refresher, below you are provided with the same program statement and C++ code for which you already inferred performance-characterizing invariants:
+
+Problem statement:
+Let's introduce some definitions that will be needed later.
+
+Let prime(x) be the set of prime divisors of x. For example, prime(140) = \{ 2, 5, 7 \}, prime(169) = \{ 13 \}.
+
+Let g(x, p) be the maximum possible integer p^k where k is an integer such that x is divisible by p^k. For example:
+
+  * g(45, 3) = 9 (45 is divisible by 3^2=9 but not divisible by 3^3=27), 
+  * g(63, 7) = 7 (63 is divisible by 7^1=7 but not divisible by 7^2=49). 
+
+
+
+Let f(x, y) be the product of g(y, p) for all p in prime(x). For example:
+
+  * f(30, 70) = g(70, 2) ⋅ g(70, 3) ⋅ g(70, 5) = 2^1 ⋅ 3^0 ⋅ 5^1 = 10, 
+  * f(525, 63) = g(63, 3) ⋅ g(63, 5) ⋅ g(63, 7) = 3^2 ⋅ 5^0 ⋅ 7^1 = 63. 
+
+
+
+You have integers x and n. Calculate f(x, 1) ⋅ f(x, 2) ⋅ … ⋅ f(x, n) mod{(10^{9} + 7)}.
+
+Input
+
+The only line contains integers x and n (2 ≤ x ≤ 10^{9}, 1 ≤ n ≤ 10^{18}) — the numbers used in formula.
+
+Output
+
+Print the answer.
+
+Examples
+
+Input
+
+
+10 2
+
+
+Output
+
+
+2
+
+
+Input
+
+
+20190929 1605
+
+
+Output
+
+
+363165664
+
+
+Input
+
+
+947 987654321987654321
+
+
+Output
+
+
+593574252
+
+Note
+
+In the first example, f(10, 1) = g(1, 2) ⋅ g(1, 5) = 1, f(10, 2) = g(2, 2) ⋅ g(2, 5) = 2.
+
+In the second example, actual value of formula is approximately 1.597 ⋅ 10^{171}. Make sure you print the answer modulo (10^{9} + 7).
+
+In the third example, be careful about overflow issue.
+
+Solution (C++ code):
+{solution}
+
+
+assistant: ### Phase 3: Implement Performance-Characterizing Invariants in C++
+
+Let's translate the natural language invariants derived earlier into C++ checker code.
+
+1. **Invariant - Prime Factorization Overhead**:
+   - **Checker Code**: This checker will be placed after determining the prime factors `dels` to ensure it catches scenarios where `x` has many small divisors.
+
+```cpp
+void check_prime_factorization_invariant(long long x, const vector<long long>& dels) {
+    if (dels.size() > sqrt(x)) {
+        cerr << "Warning: Performance bottleneck due to excessive prime factors!" << endl;
+        abort();
+    }
+}
+```
+
+2. **Invariant - Power Calculation Overhead**:
+   - **Checker Code**: This will be checked after calculating `power` for each prime divisor.
+
+```cpp
+void check_power_calculation_invariant(long long curr, long long dels_i) {
+    if (curr / dels_i > 0) {
+        cerr << "Warning: Performance bottleneck due to repeated divisions in power calculation!" << endl;
+        abort();
+    }
+}
+```
+
+3. **Invariant - Repeated Binary Exponentiation**:
+   - **Checker Code**: This check will be placed inside the loop handling the power calculation.
+
+```cpp
+void check_binpow_invariant(long long power) {
+    if (power > 1000000) { // Arbitrary large threshold showing excessive computation
+        cerr << "Warning: Performance bottleneck due to large power computation in binpow!" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrate Checks into the Original C++ Program
+
+Integrate these checks into the control flow of the given C++ program:
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+long long int Mod = 1000000000 + 7;
+
+void check_prime_factorization_invariant(long long x, const vector<long long>& dels) {
+    if (dels.size() > sqrt(x)) {
+        cerr << "Warning: Performance bottleneck due to excessive prime factors!" << endl;
+        abort();
+    }
+}
+
+void check_power_calculation_invariant(long long curr, long long dels_i) {
+    if (curr / dels_i > 0) {
+        cerr << "Warning: Performance bottleneck due to repeated divisions in power calculation!" << endl;
+        abort();
+    }
+}
+
+void check_binpow_invariant(long long power) {
+    if (power > 1000000) { // Arbitrary large threshold showing excessive computation
+        cerr << "Warning: Performance bottleneck due to large power computation in binpow!" << endl;
+        abort();
+    }
+}
+
+long long int binpow(long long int a, long long int n) {
+    long long int res = 1;
+    while (n) {
+        if (n & 1) res *= a, res %= Mod;
+        a *= a;
+        a %= Mod;
+        n >>= 1;
+    }
+    return res;
+}
+
+int main() {
+    long long int x, n;
+    cin >> x >> n;
+    long long int get = x;
+    vector<long long int> dels;
+    for (int i = 2; i <= sqrt(x); i++) {
+        if (get % i == 0) {
+            dels.push_back(i);
+            while (get % i == 0) get /= i;
+        }
+    }
+    if (get > 1) dels.push_back(get);
+
+    // Check for excessive prime factors
+    check_prime_factorization_invariant(x, dels);
+
+    long long int ans = 1;
+    for (int i = 0; i < dels.size(); i++) {
+        long long int power = 0, curr = n;
+        do {
+            power += curr / dels[i];
+            curr /= dels[i];
+
+            // Check for repeated divisions causing slowdown
+            check_power_calculation_invariant(curr, dels[i]);
+
+        } while (curr);
+
+        // Check for large powers causing excessive computation
+        check_binpow_invariant(power);
+
+        ans *= binpow(dels[i] % Mod, power);
+        ans %= Mod;
+    }
+    cout << ans;
+}
+```
+
+### Explanation
+
+- **Prime Factorization Check**: After calculating prime factors, it checks if the number of factors exceeds a reasonable estimate based on `sqrt(x)`.
+- **Power Calculation Check**: During power calculation, it checks if division by each prime divisor continues excessively, indicating a potential slowdown.
+- **Binary Exponentiation Check**: Before calculating powers, it ensures the computed power doesn't exceed an arbitrary large threshold, indicative of excessive computation.
+
+The checks are strategically placed to detect potential performance issues without adding significant overhead to the program execution.
+

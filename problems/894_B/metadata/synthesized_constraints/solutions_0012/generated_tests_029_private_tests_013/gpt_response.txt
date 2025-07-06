@@ -1,0 +1,130 @@
+=== Invariants Response ===
+To address the task, let me systematically analyze the C program and derive performance-characterizing invariants:
+
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+1. **Line-Level Analysis**:
+   - The lines within the loop starting at line 45 (`while (n > 0)`) are hit significantly more during the slow input compared to the fast input:
+     - Lines 45, 46, 47, and 48 are hit very frequently with the slow input.
+   - The loop on line 42 (`for (int i = 0; i < 1000000; i++)`) completes a fixed number of iterations (1,000,000) regardless of input size, so it doesn't contribute to a differential slowdown.
+
+2. **Interpreting the Hits**:
+   - The `while` loop on line 45 iterates based on the value of `n` after the transformations and calculations preceding it. The computation inside involves multiplying and reducing `n` iteratively. 
+   - For the slow input, `n` is significantly larger after its initial setup. Therefore, it causes the loop to execute many more times than for the fast input.
+
+3. **Interaction with Data**:
+   - The multiplication and modulo operations on lines 38-40 transform input `n` and `m` into smaller equivalents, potentially leading to a large value of `n` in the `while` loop.
+   - The condition `if (n > 1000000)` on line 46 is true for many iterations in the slow input, hence the block with `n -= 1000000` executes repeatedly, contributing to the slowdown.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on the above analysis, here are natural language statements that characterize the performance issues:
+
+1. **Large Effective Size of `n`**:
+   - **Invariant**: "When the effective value of `n` after modulo operations is significantly large, the program enters a long loop of computation, slowing down execution."
+   - **Explanation**: The effective size of `n` dictates how many times the loop executes. A large `n` results in many iterations, especially when reduced by a constant like 1,000,000 each time.
+
+2. **Conditional Path Execution**:
+   - **Invariant**: "If the condition `n > 1000000` is frequently true within the loop, this indicates repeated execution of heavy computations, leading to slow performance."
+   - **Explanation**: The loop has two branches, one for `n > 1000000` and another for smaller values. Frequent satisfaction of the larger condition results in a slower path.
+
+3. **Input-Driven Behavior**:
+   - **Invariant**: "Larger input values for `n` and `m` combined with the condition `(n * m) % (1000000007 - 1)` result in operations that scale poorly, especially near boundary conditions."
+   - **Explanation**: The calculations effectively scale down large values, but still manage to produce a significant number of iterations for the loop.
+
+These invariants abstractly describe why the program slows down for specific inputs without relying on exact values. They reflect the impact of input transformations and branching conditions on execution time.
+
+=== Checker Response ===
+### Phase 3: Implementing Checker Code for Performance Invariants
+
+Based on the performance-characterizing invariants I previously outlined, here are the C++ checker functions:
+
+1. **Checker for Large Effective Size of `n`**:
+
+```cpp
+void check_large_n_invariant(long long n) {
+    if (n > 1000000) {
+        cerr << "Warning: Performance bottleneck condition triggered - large effective value of n." << endl;
+        abort();
+    }
+}
+```
+
+2. **Checker for Frequent Large Condition Execution**:
+
+```cpp
+void check_frequent_large_condition(bool condition) {
+    if (condition) {
+        cerr << "Warning: Performance bottleneck condition triggered - frequent large condition execution in loop." << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrate Checker Code into the Original Program
+
+The following is the instrumented C++ code with the checker functions integrated:
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+void check_large_n_invariant(long long n) {
+    if (n > 1000000) {
+        cerr << "Warning: Performance bottleneck condition triggered - large effective value of n." << endl;
+        abort();
+    }
+}
+
+void check_frequent_large_condition(bool condition) {
+    if (condition) {
+        cerr << "Warning: Performance bottleneck condition triggered - frequent large condition execution in loop." << endl;
+        abort();
+    }
+}
+
+int main() {
+    long long n, m, k, ans = 1;
+    cin >> n >> m >> k;
+    if (k == -1) {
+        if ((n + m) % 2 == 1) {
+            cout << 0;
+            return 0;
+        }
+    }
+    n--;
+    m--;
+    n = n % (1000000007 - 1);
+    m = m % (1000000007 - 1);
+    n = (n * m) % (1000000007 - 1);
+
+    // Check for large effective value of n
+    check_large_n_invariant(n);
+
+    long long i2_in_10_6 = 1;
+    for (int i = 0; i < 1000000; i++) {
+        i2_in_10_6 = (i2_in_10_6 * 2) % 1000000007;
+    }
+    
+    while (n > 0) {
+        // Check for frequent large condition execution
+        check_frequent_large_condition(n > 1000000);
+
+        if (n > 1000000) {
+            ans = (ans * i2_in_10_6) % 1000000007;
+            n -= 1000000;
+        } else {
+            ans = (ans * 2) % 1000000007;
+            n--;
+        }
+    }
+    cout << ans;
+}
+```
+
+### Explanation of Checker Placement
+
+- **`check_large_n_invariant`:** This is placed immediately after `n` is transformed and reduced since it checks whether `n` has a large effective value that could lead to a slowdown.
+- **`check_frequent_large_condition`:** This is placed inside the `while` loop to trigger if the condition `n > 1000000` is repeatedly and frequently true, indicating a possible slow path in execution. 
+
+These checks help detect when the program might experience performance bottlenecks due to large values or frequent execution paths that are computationally expensive.

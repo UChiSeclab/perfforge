@@ -1,0 +1,240 @@
+=== Invariants Response ===
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+Upon examining the hit counts, we observe the following:
+
+- **Lines with Non-zero Hit Counts**:
+  - Line 74: `int main()` (entry point)
+  - Line 75: `ios_base::sync_with_stdio(0);` (setting up fast I/O)
+  - Line 76: `cin.tie(0);` (another fast I/O setup)
+  - Line 79: `cin >> n >> k;` (input reading)
+  - Line 80: `if (k >= n) return cout << 0 << '\n', 0;` (early exit for certain conditions)
+
+- There are no other lines with hits, indicating the code for the slow input is not proceeding past the input reading and the initial conditional check. Specifically, the loop at line 82 and the factorial computations in function `fat` are not triggered for the slow input.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on this analysis, the following performance-characterizing invariants can be derived:
+
+1. **Invariant 1: Early Exit Condition**  
+   - **Natural Language Description**: "If the problem constraints (`k >= n`) are met directly, the program exits early without significant computation, leading to a fast execution."
+   - **Explanation**: For the fast input, `k` equals `n`, which directly triggers the early exit condition at line 80. This avoids any further computation, providing a quick response.
+
+2. **Invariant 2: Complexity of Combinatorial Calculations**  
+   - **Natural Language Description**: "When `k` is significantly smaller than `n`, the program avoids complex combinatorial calculations and loops, which would otherwise increase runtime significantly."
+   - **Explanation**: The slow input has `k = 0`, meaning the loop `for (int i = n - k; i + 1; i--)` runs from a high value down to 0. This situation triggers complex calculations involving combinations and powers, causing a slowdown.
+
+3. **Invariant 3: Factorial Computation Cost**  
+   - **Natural Language Description**: "If the factorial or combinatorial function is invoked with large parameters, it may lead to performance bottlenecks due to repeated calculations."
+   - **Explanation**: The function `C(int n, int k)` involves factorial computations. If reached with large `n` and `k` values, this could significantly impact performance.
+
+4. **Invariant 4: Power Computation**  
+   - **Natural Language Description**: "If the power function is invoked frequently with large exponents, it can contribute to increased execution time."
+   - **Explanation**: The expression `(mod_int<998244353>(i) ^ n)` involves powering operations, which become expensive if executed many times inside a loop.
+
+These invariants give insights into potential performance bottlenecks. They provide guidance on which parts of the code may require optimization under different input scenarios within the given constraints.
+
+=== Checker Response ===
+### Phase 3: Implementing the Performance-Characterizing Invariants in C++
+
+Here we implement checkers based on the natural language invariants derived previously. Each checker will verify a condition that, when met, signals a potential performance bottleneck.
+
+1. **Invariant 1: Early Exit Condition**
+
+```cpp
+void check_early_exit_condition(int k, int n) {
+    if (k >= n) {
+        cerr << "Warning: Early exit condition triggered!" << endl;
+        abort();
+    }
+}
+```
+
+2. **Invariant 2: Complexity of Combinatorial Calculations**
+
+```cpp
+void check_combinatorial_complexity(int k, int n) {
+    int threshold = n / 2; // Example threshold, can be adjusted
+    if (k < threshold) {
+        cerr << "Warning: High combinatorial complexity due to large n with small k!" << endl;
+        abort();
+    }
+}
+```
+
+3. **Invariant 3: Factorial Computation Cost**
+
+```cpp
+void check_factorial_computation(int n) {
+    int threshold = 100000; // An arbitrary large threshold
+    if (n > threshold) {
+        cerr << "Warning: Large factorial computation!" << endl;
+        abort();
+    }
+}
+```
+
+4. **Invariant 4: Power Computation**
+
+```cpp
+void check_power_computation(int n, int i) {
+    int threshold = 100000; // An arbitrary large threshold
+    if (n > threshold && i > threshold) {
+        cerr << "Warning: Expensive power computation!" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrating Checkers into the Original C++ Code
+
+Now, we integrate these checkers into the given C++ program at appropriate points. We should ensure that each check is placed to avoid unnecessary overhead.
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+const int INF = 0x3f3f3f3f;
+const long long LINF = 0x3f3f3f3f3f3f3f3fll;
+
+template <int p>
+struct mod_int {
+  long long pow(long long b, long long e) {
+    if (e == 0) return 1;
+    long long r = pow(b * b % p, e / 2);
+    if (e % 2 == 1) r = (r * b) % p;
+    return r;
+  }
+  long long inv(long long b) { return pow(b, p - 2); }
+  using m = mod_int;
+  long long v;
+  mod_int() {}
+  mod_int(long long v_) : v(v_) {
+    if (v >= p || v <= -p) v %= p;
+    if (v < 0) v += p;
+  }
+  m &operator+=(const m &a) {
+    v += a.v;
+    if (v >= p) v -= p;
+    return *this;
+  }
+  m &operator-=(const m &a) {
+    v -= a.v;
+    if (v < 0) v += p;
+    return *this;
+  }
+  m &operator*=(const m &a) {
+    v = (v * a.v) % p;
+    return *this;
+  }
+  m &operator/=(const m &a) {
+    v = (v * inv(a.v)) % p;
+    return *this;
+  }
+  m operator-() { return m(-v); }
+  m &operator^=(long long e) {
+    if (e < 0) {
+      v = inv(v);
+      e = -e;
+    }
+    v = pow(v, e % (p - 1));
+    return *this;
+  }
+  bool operator==(const m &a) { return v == a.v; }
+  bool operator!=(const m &a) { return v != a.v; }
+  friend istream &operator>>(istream &in, m &a) {
+    long long val;
+    in >> val;
+    a = m(val);
+    return in;
+  }
+  friend ostream &operator<<(ostream &out, m a) { return out << a.v; }
+  friend m operator+(m a, m b) { return a += b; }
+  friend m operator-(m a, m b) { return a -= b; }
+  friend m operator*(m a, m b) { return a *= b; }
+  friend m operator/(m a, m b) { return a /= b; }
+  friend m operator^(m a, long long e) { return a ^= e; }
+};
+
+vector<mod_int<998244353> > fatt;
+mod_int<998244353> fat(int n) {
+  if (n < fatt.size()) return fatt[n];
+  if (!n)
+    fatt.push_back(1);
+  else
+    fatt.push_back(n * fat(n - 1));
+  return fatt.back();
+}
+
+const int MAX = 2e5 + 10;
+mod_int<998244353> C(int n, int k) { return fat(n) / fat(k) / fat(n - k); }
+
+// Checkers
+void check_early_exit_condition(int k, int n) {
+    if (k >= n) {
+        cerr << "Warning: Early exit condition triggered!" << endl;
+        abort();
+    }
+}
+
+void check_combinatorial_complexity(int k, int n) {
+    int threshold = n / 2; // Example threshold
+    if (k < threshold) {
+        cerr << "Warning: High combinatorial complexity due to large n with small k!" << endl;
+        abort();
+    }
+}
+
+void check_factorial_computation(int n) {
+    int threshold = 100000; // Threshold for factorial computation
+    if (n > threshold) {
+        cerr << "Warning: Large factorial computation!" << endl;
+        abort();
+    }
+}
+
+void check_power_computation(int n, int i) {
+    int threshold = 100000; // Threshold for power computation
+    if (n > threshold && i > threshold) {
+        cerr << "Warning: Expensive power computation!" << endl;
+        abort();
+    }
+}
+
+int main() {
+  ios_base::sync_with_stdio(0);
+  cin.tie(0);
+  int n;
+  long long k;
+  cin >> n >> k;
+
+  // Insert checkers after reading inputs
+  check_early_exit_condition(k, n);
+  check_combinatorial_complexity(k, n);
+  check_factorial_computation(n);
+
+  if (k >= n) return cout << 0 << '\n', 0;
+
+  mod_int<998244353> ans = 0;
+
+  for (int i = n - k; i + 1; i--) {
+    check_power_computation(n, i); // Power computation check inside loop
+    mod_int<998244353> add = C(n - k, i) * (mod_int<998244353>(i) ^ n);
+    if (i % 2 == (n - k) % 2)
+      ans += add;
+    else
+      ans -= add;
+  }
+
+  if (k) ans *= 2;
+  cout << ans * C(n, n - k) << '\n';
+  exit(0);
+}
+```
+
+### Explanation
+
+- **Checkers**: Implemented and inserted checkers for each invariant at strategic points (e.g., after input reading and before loops).
+- **Avoidance of Overhead**: The checks are placed outside of tight loops where possible to minimize overhead.
+- **Thresholds**: Used reasonable thresholds to check conditions that might lead to performance degradation. These can be tuned based on empirical testing and profiling.
+
+This instrumented code will now alert and abort when a performance bottleneck condition is triggered, helping in debugging and optimization efforts.

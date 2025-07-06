@@ -1,0 +1,159 @@
+=== Invariants Response ===
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+Upon analyzing the line-level hit counts, there are specific lines that exhibit a significant disparity in hits between the slow and fast inputs:
+
+1. **Line 19**: The `while` loop condition `k >= (j + 1) && g[((n - 1) / 2) + j] < g[((n - 1) / 2) + j + 1]` has an extremely high hit count for both the slow and fast inputs, but with the slow input having vastly more hits.
+2. **Line 20**: Incrementing the median element `g[((n - 1) / 2)]++` shows a high number of executions, reflecting the number of times this operation is performed.
+3. **Line 22**: Increments of `g[((n - 1) / 2) + j]++` occur frequently when `j` is not zero, contributing to the high hit count.
+
+The bottleneck seems to be related to the repeated execution of the `while` loop, which is dependent on the value of `k` and the differences between consecutive elements in the sorted array.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on the analysis, here are natural language invariants that characterize performance slowdowns:
+
+1. **Repeated Increment Operations**:
+   - **Invariant**: "If the number of operations `k` is much larger than the number of elements `n`, and there is a substantial difference between consecutive elements in the middle of the sorted array, the program may repeatedly increment elements, causing a slowdown."
+   - **Explanation**: This invariant captures the condition where high `k` relative to `n` allows for many operations to be performed, especially when there is a significant gap between elements around the median, requiring many increments to reach the next element's value.
+
+2. **Large Operational Budget Relative to Element Gaps**:
+   - **Invariant**: "When the operational budget `k` allows for multiple adjustments beyond small differences between adjacent elements near the median, the execution path may become prolonged."
+   - **Explanation**: This details how a large `k` compared to small gaps can lead to excessive operations since the loop attempts to equalize elements up to the next larger element, exhausting operations.
+
+3. **Costly Element Updates in a Loop**:
+   - **Invariant**: "If the median's vicinity involves multiple elements needing frequent updates due to small incremental value differences, the execution time can increase significantly."
+   - **Explanation**: Focuses on the impact of having many elements near the median with small incremental differences, causing the loop to run many iterations.
+
+These invariants suggest that the essential factor in performance degradation is the relationship between the operational budget `k`, the number of elements `n`, and the differences between consecutive elements around the median of the sorted array. These conditions lead to repeated iterations and updates, significantly impacting performance.
+
+=== Checker Response ===
+### Phase 3: Implement Checker Code for Performance-Characterizing Invariants
+
+Here are the runtime checks for the performance-characterizing invariants derived earlier:
+
+#### Invariant 1: Repeated Increment Operations
+```cpp
+void check_repeated_increment_operations(int k, int n, const std::vector<int>& g) {
+    int median_index = (n - 1) / 2;
+    if (k > n * (g[median_index + 1] - g[median_index])) {
+        cerr << "Warning: Performance bottleneck condition triggered - repeated increment operations!" << endl;
+        abort();
+    }
+}
+```
+
+#### Invariant 2: Large Operational Budget Relative to Element Gaps
+```cpp
+void check_large_operational_budget(int k, int n, const std::vector<int>& g) {
+    int median_index = (n - 1) / 2;
+    int max_gap = 0;
+    for (int j = 0; j < n / 2; ++j) {
+        max_gap = max(max_gap, g[median_index + j + 1] - g[median_index + j]);
+    }
+    if (k > n * max_gap) {
+        cerr << "Warning: Performance bottleneck condition triggered - large operational budget relative to element gaps!" << endl;
+        abort();
+    }
+}
+```
+
+#### Invariant 3: Costly Element Updates in a Loop
+```cpp
+void check_costly_element_updates(int k, int n, const std::vector<int>& g) {
+    int median_index = (n - 1) / 2;
+    int nearby_updates = 0;
+    for (int j = 0; j < n / 2; ++j) {
+        nearby_updates += g[median_index + j + 1] - g[median_index + j] <= 1;
+    }
+    if (k > n && nearby_updates > n / 4) {
+        cerr << "Warning: Performance bottleneck condition triggered - costly element updates in a loop!" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrate Checker Code into the Original Program
+
+Below is the instrumented C++ code, including the runtime checks for performance bottlenecks:
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+// Function to check repeated increment operations
+void check_repeated_increment_operations(int k, int n, const vector<int>& g) {
+    int median_index = (n - 1) / 2;
+    if (k > n * (g[median_index + 1] - g[median_index])) {
+        cerr << "Warning: Performance bottleneck condition triggered - repeated increment operations!" << endl;
+        abort();
+    }
+}
+
+// Function to check large operational budget relative to element gaps
+void check_large_operational_budget(int k, int n, const vector<int>& g) {
+    int median_index = (n - 1) / 2;
+    int max_gap = 0;
+    for (int j = 0; j < n / 2; ++j) {
+        max_gap = max(max_gap, g[median_index + j + 1] - g[median_index + j]);
+    }
+    if (k > n * max_gap) {
+        cerr << "Warning: Performance bottleneck condition triggered - large operational budget relative to element gaps!" << endl;
+        abort();
+    }
+}
+
+// Function to check costly element updates in a loop
+void check_costly_element_updates(int k, int n, const vector<int>& g) {
+    int median_index = (n - 1) / 2;
+    int nearby_updates = 0;
+    for (int j = 0; j < n / 2; ++j) {
+        nearby_updates += g[median_index + j + 1] - g[median_index + j] <= 1;
+    }
+    if (k > n && nearby_updates > n / 4) {
+        cerr << "Warning: Performance bottleneck condition triggered - costly element updates in a loop!" << endl;
+        abort();
+    }
+}
+
+int main() {
+    int n, k, a;
+    cin >> n >> k;
+    vector<int> g;
+    for (int i = 0; i < n; i++) {
+        cin >> a;
+        g.push_back(a);
+    }
+    sort(g.begin(), g.end());
+
+    // Insert checks after sorting
+    check_repeated_increment_operations(k, n, g);
+    check_large_operational_budget(k, n, g);
+    check_costly_element_updates(k, n, g);
+
+    for (int j = 0; j < (n + 1) / 2; j++) {
+        if (j == (n + 1) / 2 - 1) {
+            while (k >= j + 1) {
+                k -= (j + 1);
+                g[((n - 1) / 2)]++;
+            }
+        } else {
+            while (k >= (j + 1) && g[((n - 1) / 2) + j] < g[((n - 1) / 2) + j + 1]) {
+                g[((n - 1) / 2)]++;
+                if (j) {
+                    g[((n - 1) / 2) + j]++;
+                }
+                k -= (j + 1);
+            }
+        }
+    }
+    cout << g[((n - 1) / 2)];
+    return 0;
+}
+```
+
+### Explanation
+
+- **Checker Functions**: The functions `check_repeated_increment_operations`, `check_large_operational_budget`, and `check_costly_element_updates` are defined to encapsulate the logic of each performance-checking condition.
+- **Integration**: These checkers are called right after sorting the array, i.e., before entering the main loop execution, ensuring that they evaluate the conditions efficiently without adding overhead inside tight loops.
+- **Effectiveness**: By placing the checks before the loop execution, we maintain the efficiency of the code while guarding against performance issues that might arise with pathological input scenarios.

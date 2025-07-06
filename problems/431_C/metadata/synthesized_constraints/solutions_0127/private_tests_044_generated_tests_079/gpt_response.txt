@@ -1,0 +1,149 @@
+=== Invariants Response ===
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+After comparing the line-level hit counts between the fast and slow runs, the following observations can be made:
+
+1. **Recursive Function Calls**: The function `sol` (line 4) is invoked 808,336 times for the slow input versus 1,090 times for the fast input. This indicates that the recursion is significantly deeper and more frequent for the slow input.
+
+2. **End Condition Check**: The line checking if `w == n` (line 5) and the subsequent logic (lines 6–9) is hit 808,336 times in the slow run, compared to just 1,090 times in the fast run. This means that reaching the base case is much less frequent relative to the number of function calls in the slow run.
+
+3. **Dynamic Programming Cache**: The memoization check (line 12) is verified 259,091 times in the slow input, and only 15 times in the fast input. This suggests that the cache is not helping as much as it could be, possibly due to a high diversity of states.
+
+4. **Loop Over Children**: The for-loop (lines 14–17) iterating over possible child weights is executed 816,500 times in the slow input compared to 1,100 times in the fast input, indicating that this loop is a major factor in the slow performance.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on the analysis from Phase 1, here are the performance-characterizing invariants:
+
+1. **Deep and Frequent Recursion**: 
+   - **Natural Language Description**: "When `n` is large, close to its maximum constraint, and `k` is also large, the recursion may explore many paths due to the high number of possible child nodes. This leads to a deep and frequent invocation of the recursive function, significantly increasing runtime."
+   - **Reasoning**: The large `n` and `k` values increase the search space exponentially, leading to many recursive calls before reaching a base case or a previously computed state.
+
+2. **Inefficient Cache Utilization**:
+   - **Natural Language Description**: "If the dynamic programming cache is checked frequently but not effectively reducing the number of computations, it may indicate that the state space is too large or diverse for effective cache hits."
+   - **Reasoning**: High diversity in state space due to large `n` and `k` values results in a low cache hit ratio, causing the program to recompute many states.
+
+3. **High Loop Iteration Counts**:
+   - **Natural Language Description**: "When `k` is large, each recursive call iterates over many child paths, and if these iterations are not curtailed by early exits or cache hits, the cumulative number of iterations can become large."
+   - **Reasoning**: For each recursive call, a large `k` increases the possible paths to explore, leading to a combinatorial explosion in the number of path explorations.
+
+These invariants suggest that the program's performance is particularly sensitive to the maximum values of `n` and `k`, and that improving cache utilization or reducing unnecessary recursive calls would help address the slowdowns.
+
+=== Checker Response ===
+### Phase 3: Implementing the Natural Language Invariants in C++
+
+For each invariant derived in Phase 2, we will implement a runtime checker in C++ following the given template:
+
+#### Invariant 1: Deep and Frequent Recursion
+- **Checker Implementation**:
+  ```cpp
+  void check_recursion_invariant(int n, int k, int recursionDepth) {
+      if (n >= 90 && k >= 90 && recursionDepth > 1000000) { // Example thresholds
+          cerr << "Warning: Recursion invariant triggered - deep and frequent recursion!" << endl;
+          abort();
+      }
+  }
+  ```
+
+#### Invariant 2: Inefficient Cache Utilization
+- **Checker Implementation**:
+  ```cpp
+  void check_cache_invariant(int cacheHitCount, int recursionCallCount) {
+      if (recursionCallCount > 1000000 && cacheHitCount < recursionCallCount / 100) { // Example thresholds
+          cerr << "Warning: Cache invariant triggered - inefficient cache utilization!" << endl;
+          abort();
+      }
+  }
+  ```
+
+#### Invariant 3: High Loop Iteration Counts
+- **Checker Implementation**:
+  ```cpp
+  void check_loop_invariant(int k, int loopIterations) {
+      if (k >= 90 && loopIterations > 1000000) { // Example thresholds
+          cerr << "Warning: Loop invariant triggered - high loop iteration count!" << endl;
+          abort();
+      }
+  }
+  ```
+
+### Phase 4: Integrate Checker Code into Original Program
+
+We will integrate these checkers at appropriate points in the original C++ solution to effectively monitor and catch performance bottlenecks.
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+int dp[2][101][101], n, d, k;
+bool seen[2][101][101];
+
+// Function to check deep and frequent recursion
+void check_recursion_invariant(int recursionDepth) {
+    if (n >= 90 && k >= 90 && recursionDepth > 1000000) {
+        cerr << "Warning: Recursion invariant triggered - deep and frequent recursion!" << endl;
+        abort();
+    }
+}
+
+// Function to check inefficient cache utilization
+void check_cache_invariant(int cacheHitCount, int recursionCallCount) {
+    if (recursionCallCount > 1000000 && cacheHitCount < recursionCallCount / 100) {
+        cerr << "Warning: Cache invariant triggered - inefficient cache utilization!" << endl;
+        abort();
+    }
+}
+
+// Function to check high loop iteration counts
+void check_loop_invariant(int loopIterations) {
+    if (k >= 90 && loopIterations > 1000000) {
+        cerr << "Warning: Loop invariant triggered - high loop iteration count!" << endl;
+        abort();
+    }
+}
+
+int sol(int index, int w, bool in, int recursionDepth, int& cacheHitCount, int& recursionCallCount) {
+    recursionCallCount++;
+    check_recursion_invariant(recursionDepth);
+    
+    if (w == n) {
+        if (in) return 1;
+        else return 0;
+    }
+    if (index == n || w > n) return 0;
+    
+    if (seen[in][index][w]) {
+        cacheHitCount++;
+        return dp[in][index][w];
+    }
+    
+    int ans = 0;
+    int loopIterations = 0;
+    for (int i = 1; i <= k; i++) {
+        loopIterations++;
+        ans = (ans + (sol(index + 1, w + i, (in || i >= d), recursionDepth + 1, cacheHitCount, recursionCallCount) % 1000000007)) % 1000000007;
+    }
+    
+    check_loop_invariant(loopIterations);
+    
+    seen[in][index][w] = true;
+    return dp[in][index][w] = ans;
+}
+
+int main() {
+    scanf("%d %d %d", &n, &k, &d);
+    
+    int cacheHitCount = 0;
+    int recursionCallCount = 0;
+    
+    printf("%d\n", sol(0, 0, 0, 0, cacheHitCount, recursionCallCount));
+    
+    check_cache_invariant(cacheHitCount, recursionCallCount);
+}
+```
+
+**Explanation:**
+- **Recursion Depth Check**: We maintain a `recursionDepth` parameter to track how deep the recursion has gone and apply the check.
+- **Loop Iteration Check**: We count loop iterations within each recursive call and check if it exceeds a threshold.
+- **Cache Utilization Check**: Before returning from the `sol` function, we track cache hits and compare them against the number of recursive calls.
+- **Placement**: Each check is placed strategically to avoid performance degradation in tight loops, yet close enough to catch the problem early.

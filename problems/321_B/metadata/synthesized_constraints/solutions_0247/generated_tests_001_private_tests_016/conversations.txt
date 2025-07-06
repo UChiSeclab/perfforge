@@ -1,0 +1,1090 @@
+system: You are a helpful assistant good at coding.
+
+user: (A) Context
+
+You are an experienced C software engineer focusing on performance bottlenecks. You have:
+1. A problem statement describing a task or algorithm (with constraints such as n <= 100).
+2. A C program that implements a solution to that problem.
+3. Two inputs: a “fast” input that completes quickly, and a “slow” input that takes much longer—both inputs have similar size/structure.
+4. Line-level hit counts for both runs, showing which lines get hit significantly more often on the slow input.
+
+Your goal is to diagnose why the program runs slowly for the slow input and derive conditions or invariants that capture what triggers this slowdown.
+
+(B) Tasks: Analyze the given code and generate performance-characterizing invariants in natural language
+
+Phase 1: Identify expensive or onefficient code segments. In this phase you are asked to,
+1. Compare line-level hit counts between the fast and slow runs.
+2. Pinpoint lines or functions that get significantly more hits under the slow input.
+3. Infer how these lines might be interacting with data structures, loops, recursion, etc., especially as they relate to the input constraints (e.g., n <= 100).
+
+Phase 2: Derive performance-characterizing invariants (natural language). In this phase you are asked to,
+1. Generate natural language statements that describe conditions under which the program likely enters a slow path.
+2. Avoid using specific numeric values from the slow input; abstract them into categories or thresholds. However, make sure those thresholds adhere to the input constraints of the problem.
+3. Correlate these conditions strongly to input patterns (e.g., “when n is close to 100 and there is a nested loop,” or “when a data structure is repeatedly sorted”).
+4. Ensure your statements are broad enough to catch possible future slow scenarios, but still reflect realistic triggers given the constraints (like n <= 100).
+
+Note that not all performance-characterizing invariants are about maximising input size. You may refer to the following examples for inspiration --- some maximising the input size, some not --- but do not simply replicate them exactly. Rather, use them as inspiration to infer and tailor performance-characterizing invariants tailored for the C code and problem statement you were asked to analize:
+
+Example Invariant #1:
+
+A potential slowdown arises when certain arrays or lists grow large, causing repeated operations. One way to detect this is to check if the size of a critical array arr (used in a nested loop) exceeds a broad threshold.
+
+Natural language description: “If arr is very large and used in nested loops, the code may repeat operations too many times.”
+
+Code implementing the natural language description:
+
+```cpp
+// Sample checker function
+void check_size_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: size_invariant triggered - array too large for nested loops" << endl;
+        abort();
+    }
+}
+
+// Usage in main or function
+int arrSize = arr.size();
+check_size_invariant(arrSize > 50000);
+```
+
+Example Invariant #2:
+
+Repeated sorting or searching on a data structure can degrade performance, especially if the data structure is large or if the sorting is called multiple times in a loop.
+
+Natural language description: “If a large portion of the code’s execution time is spent in sorting a data structure repeatedly, performance may degrade. Check if the data structure is frequently resorted or reprocessed when it has many elements.”
+
+Code implementing the natural language description:
+
+```cpp
+void check_sort_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: sort_invariant triggered - repeatedly sorting large data" << endl;
+        abort();
+    }
+}
+
+// After reading input or before sorting
+int elementCount = someDataStructure.size();
+check_sort_invariant(elementCount > 100000 && /* some condition indicating repeated sorts */);
+```
+
+Example Invariant #3:
+
+Recursion (e.g., graph traversal or the iterative version of it, recurssive dynamic programming, recurssive computation like computing the next Fibonacci number, etc.) can become expensive if it explores a large search space. A sign of this might be a high branching factor combined with a deep recursion depth.
+
+Natural language description: “If the recursion depth is likely to exceed a certain level or if many branches are processed at each recursive call, the computation may become very expensive.”
+
+```cpp
+void check_dfs_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: dfs_invariant triggered - high recursion depth or branching factor" << endl;
+        abort();
+    }
+}
+
+// Before calling dfs or inside setup
+check_dfs_invariant((maxDepthEstimate > 50) && (branchFactorEstimate > 10));
+```
+
+Example Invariant #4:
+
+Memory usage spikes or large matrix operations can slow down computation if array dimensions become too large. If the program initializes a 2D array based on input dimensions n and m, certain input combinations can trigger large memory footprints or nested loops over the entire matrix.
+
+Natural language description: “If n and m together exceed a threshold that implies large matrix computations, the program may slow significantly.”
+
+```cpp
+void check_matrix_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: matrix_invariant triggered - potentially large matrix operations" << endl;
+        abort();
+    }
+}
+
+// After reading n, m
+check_matrix_invariant(n * m > 1000000);
+```
+
+Example invariant #5:
+
+If a program runs an expensive function or heavy-weight code (e.g. memory allocation) repeatedly within a performance-critical loop or function, the overhead for calling that function can accumulate, slowing the program significantly.
+
+Natural langauge description: "If function foo is an expensive function to execute, and is called a large number of times in a loop or recursive function, the program may slow down significantly"
+
+```cpp
+void check_expensive_function_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: expensive function invariant triggered - excessive calls" << endl;
+        abort();
+    }
+}
+
+check_expensive_function_invariant(n > 1000000);  // arbitrary, but large threshold
+for (i = 0; i < n; ++i) { 
+    foo(); // expensive function
+}
+```
+
+(C) Output Requirements
+1. Provide a list of natural language performance invariants explaining under what conditions the code slows down.
+2. Do not mention or rely on exact values from the provided slow input.
+3. Use or suggest threshold values that align with problem constraints (e.g., n <= 100).
+4. The output should be a concise, descriptive set of statements about performance triggers.
+
+(D) Important Considerations
+1. Avoid hardcoding. Don’t rely solely on the exact values from the provided slow input; think in terms of categories or thresholds that lead to slow execution.
+2. Avoid checks inside tight loops. Place checks in a way that does not significantly degrade performance.
+3. Focus on fuzzer utility. The checks should help a fuzzer detect slow performance triggers by hitting these conditions.
+
+(E) Problem Statement
+
+Fox Ciel is playing a card game with her friend Jiro.
+
+Jiro has n cards, each one has two attributes: position (Attack or Defense) and strength. Fox Ciel has m cards, each one has these two attributes too. It's known that position of all Ciel's cards is Attack.
+
+Now is Ciel's battle phase, Ciel can do the following operation many times:
+
+  1. Choose one of her cards X. This card mustn't be chosen before. 
+  2. If Jiro has no alive cards at that moment, he gets the damage equal to (X's strength). Otherwise, Ciel needs to choose one Jiro's alive card Y, then: 
+    * If Y's position is Attack, then (X's strength)  ≥  (Y's strength) must hold. After this attack, card Y dies, and Jiro gets the damage equal to (X's strength) - (Y's strength). 
+    * If Y's position is Defense, then (X's strength)  > (Y's strength) must hold. After this attack, card Y dies, but Jiro gets no damage. 
+
+
+
+Ciel can end her battle phase at any moment (so, she can use not all her cards). Help the Fox to calculate the maximal sum of damage Jiro can get.
+
+Input
+
+The first line contains two integers n and m (1 ≤ n, m ≤ 100) — the number of cards Jiro and Ciel have.
+
+Each of the next n lines contains a string position and an integer strength (0 ≤ strength ≤ 8000) — the position and strength of Jiro's current card. Position is the string "ATK" for attack, and the string "DEF" for defense.
+
+Each of the next m lines contains an integer strength (0 ≤ strength ≤ 8000) — the strength of Ciel's current card.
+
+Output
+
+Output an integer: the maximal damage Jiro can get.
+
+Examples
+
+Input
+
+2 3
+ATK 2000
+DEF 1700
+2500
+2500
+2500
+
+
+Output
+
+3000
+
+
+Input
+
+3 4
+ATK 10
+ATK 100
+ATK 1000
+1
+11
+101
+1001
+
+
+Output
+
+992
+
+
+Input
+
+2 4
+DEF 0
+ATK 0
+0
+0
+1
+1
+
+
+Output
+
+1
+
+Note
+
+In the first test case, Ciel has 3 cards with same strength. The best strategy is as follows. First she uses one of these 3 cards to attack "ATK 2000" card first, this attack destroys that card and Jiro gets 2500 - 2000 = 500 damage. Then she uses the second card to destroy the "DEF 1700" card. Jiro doesn't get damage that time. Now Jiro has no cards so she can use the third card to attack and Jiro gets 2500 damage. So the answer is 500 + 2500 = 3000.
+
+In the second test case, she should use the "1001" card to attack the "ATK 100" card, then use the "101" card to attack the "ATK 10" card. Now Ciel still has cards but she can choose to end her battle phase. The total damage equals (1001 - 100) + (101 - 10) = 992.
+
+In the third test case note that she can destroy the "ATK 0" card by a card with strength equal to 0, but she can't destroy a "DEF 0" card with that card.
+
+(F) Program Solving the Problem Statement
+
+#include <bits/stdc++.h>
+using namespace std;
+int output, d;
+struct node {
+  int from;
+  int to;
+  int w;
+  int f;
+  int num;
+  int next;
+} e[2000000];
+int head[150000];
+int vis[150000];
+int dis[150000];
+int pre[150000];
+int path[150000];
+struct node2 {
+  char op[150];
+  int val;
+} a[15000];
+int n, ss, tt, cont, nn, mm;
+void add(int from, int to, int f, int w) {
+  e[cont].from = from;
+  e[cont].to = to;
+  e[cont].f = f;
+  e[cont].w = w;
+  e[cont].num = cont;
+  e[cont].next = head[from];
+  head[from] = cont++;
+}
+int SPFA() {
+  memset(vis, 0, sizeof(vis));
+  for (int i = 1; i <= tt; i++) dis[i] = -0x3f3f3f3f;
+  dis[ss] = 0;
+  queue<int> s;
+  s.push(ss);
+  while (!s.empty()) {
+    int u = s.front();
+    s.pop();
+    vis[u] = 0;
+    for (int i = head[u]; i != -1; i = e[i].next) {
+      int v = e[i].to;
+      int w = e[i].w;
+      int f = e[i].f;
+      if (f && dis[v] < dis[u] + w) {
+        dis[v] = dis[u] + w;
+        pre[v] = u;
+        path[v] = e[i].num;
+        if (vis[v] == 0) {
+          vis[v] = 1;
+          s.push(v);
+        }
+      }
+    }
+  }
+  if (d == 1) {
+    if (dis[tt] >= 0)
+      return 1;
+    else
+      return 0;
+  } else {
+    if (dis[tt] != -0x3f3f3f3f)
+      return 1;
+    else
+      return 0;
+  }
+}
+void Slove() {
+  d++;
+  int ans = 0;
+  int maxflow = 0;
+  while (SPFA() == 1) {
+    int minn = 0x3f3f3f3f;
+    for (int i = tt; i != ss; i = pre[i]) {
+      minn = min(minn, e[path[i]].f);
+    }
+    for (int i = tt; i != ss; i = pre[i]) {
+      e[path[i]].f -= minn;
+      e[path[i] ^ 1].f += minn;
+    }
+    maxflow += minn;
+    ans += dis[tt] * minn;
+  }
+  output = max(output, ans);
+}
+int xx[150000];
+int main() {
+  while (~scanf("%d%d", &nn, &mm)) {
+    output = 0, d = 0;
+    ss = nn + mm + 1;
+    tt = nn + mm + 2;
+    cont = 0;
+    memset(head, -1, sizeof(head));
+    for (int i = 1; i <= nn; i++) {
+      scanf("%s%d", a[i].op, &a[i].val);
+    }
+    for (int i = 1; i <= mm; i++) scanf("%d", &xx[i]);
+    for (int i = 1; i <= mm; i++) add(ss, i, 1, 0), add(i, ss, 0, 0);
+    for (int i = 1; i <= nn; i++) add(i + mm, tt, 1, 0), add(tt, i + mm, 0, 0);
+    for (int i = 1; i <= mm; i++) {
+      int x = xx[i];
+      for (int j = 1; j <= nn; j++) {
+        if (a[j].op[0] == 'A' && x >= a[j].val) {
+          add(i, j + mm, 1, x - a[j].val);
+          add(j + mm, i, 0, -(x - a[j].val));
+        }
+      }
+    }
+    Slove();
+    if (nn < mm) {
+      ss = mm * 2 + 1;
+      tt = ss + 1;
+      cont = 0;
+      memset(head, -1, sizeof(head));
+      for (int i = 1; i <= mm; i++) add(ss, i, 1, 0), add(i, ss, 0, 0);
+      for (int i = 1; i <= nn; i++)
+        add(i + mm, tt, 1, 0), add(tt, i + mm, 0, 0);
+      for (int i = nn + 1; i <= mm; i++)
+        add(i + mm, tt, 1, 0), add(tt, i + mm, 0, 0);
+      for (int i = 1; i <= mm; i++) {
+        int x = xx[i];
+        for (int j = 1; j <= nn; j++) {
+          if (a[j].op[0] == 'A') {
+            if (x >= a[j].val) {
+              add(i, j + mm, 1, x - a[j].val);
+              add(j + mm, i, 0, -(x - a[j].val));
+            } else {
+              add(i, j + mm, 1, -10000000);
+              add(j + mm, i, 0, 10000000);
+            }
+          } else {
+            if (x > a[j].val) {
+              add(i, j + mm, 1, 0);
+              add(j + mm, i, 0, 0);
+            } else {
+              add(i, j + mm, 1, -10000000);
+              add(j + mm, i, 0, 10000000);
+            }
+          }
+        }
+        for (int j = nn + 1; j <= mm; j++) {
+          add(i, j + mm, 1, xx[i]);
+          add(j + mm, i, 0, -xx[i]);
+        }
+      }
+      Slove();
+    }
+    printf("%d\n", output);
+  }
+}
+
+
+(G) The Slow & Fast Inputs
+
+(G.1) Slow Input
+
+10 25
+ATK 3519
+ATK 2186
+ATK 3219
+ATK 3116
+ATK 2170
+ATK 3236
+ATK 3013
+DEF 1188
+ATK 1914
+ATK 2838
+1335
+725
+752
+1254
+414
+1653
+439
+784
+649
+586
+759
+1666
+417
+1316
+392
+799
+534
+1402
+515
+1334
+1435
+898
+1214
+1427
+1820
+
+
+(G.2) Fast Input
+
+10 7
+ATK 1
+ATK 2
+ATK 3
+ATK 4
+ATK 5
+ATK 6
+ATK 7
+DEF 8
+DEF 9
+DEF 10
+1
+2
+3
+4
+5
+6
+7
+
+
+(H) Hit Count Information of Slow Input and Fast Input (Aggregated):
+
+#include <bits/stdc++.h> /* line 1 slow_hit_count: 0, fast_hit_count: 0 */
+using namespace std; /* line 2 slow_hit_count: 0, fast_hit_count: 0 */
+int output, d; /* line 3 slow_hit_count: 0, fast_hit_count: 0 */
+struct node { /* line 4 slow_hit_count: 0, fast_hit_count: 0 */
+  int from; /* line 5 slow_hit_count: 0, fast_hit_count: 0 */
+  int to; /* line 6 slow_hit_count: 0, fast_hit_count: 0 */
+  int w; /* line 7 slow_hit_count: 0, fast_hit_count: 0 */
+  int f; /* line 8 slow_hit_count: 0, fast_hit_count: 0 */
+  int num; /* line 9 slow_hit_count: 0, fast_hit_count: 0 */
+  int next; /* line 10 slow_hit_count: 0, fast_hit_count: 0 */
+} e[2000000]; /* line 11 slow_hit_count: 0, fast_hit_count: 0 */
+int head[150000]; /* line 12 slow_hit_count: 0, fast_hit_count: 0 */
+int vis[150000]; /* line 13 slow_hit_count: 0, fast_hit_count: 0 */
+int dis[150000]; /* line 14 slow_hit_count: 0, fast_hit_count: 0 */
+int pre[150000]; /* line 15 slow_hit_count: 0, fast_hit_count: 0 */
+int path[150000]; /* line 16 slow_hit_count: 0, fast_hit_count: 0 */
+struct node2 { /* line 17 slow_hit_count: 0, fast_hit_count: 0 */
+  char op[150]; /* line 18 slow_hit_count: 0, fast_hit_count: 0 */
+  int val; /* line 19 slow_hit_count: 0, fast_hit_count: 0 */
+} a[15000]; /* line 20 slow_hit_count: 0, fast_hit_count: 0 */
+int n, ss, tt, cont, nn, mm; /* line 21 slow_hit_count: 0, fast_hit_count: 0 */
+void add(int from, int to, int f, int w) { /* line 22 slow_hit_count: 1420, fast_hit_count: 90 */
+  e[cont].from = from; /* line 23 slow_hit_count: 1420, fast_hit_count: 90 */
+  e[cont].to = to; /* line 24 slow_hit_count: 1420, fast_hit_count: 90 */
+  e[cont].f = f; /* line 25 slow_hit_count: 1420, fast_hit_count: 90 */
+  e[cont].w = w; /* line 26 slow_hit_count: 1420, fast_hit_count: 90 */
+  e[cont].num = cont; /* line 27 slow_hit_count: 1420, fast_hit_count: 90 */
+  e[cont].next = head[from]; /* line 28 slow_hit_count: 1420, fast_hit_count: 90 */
+  head[from] = cont++; /* line 29 slow_hit_count: 1420, fast_hit_count: 90 */
+} /* line 30 slow_hit_count: 1420, fast_hit_count: 90 */
+int SPFA() { /* line 31 slow_hit_count: 27, fast_hit_count: 5 */
+  memset(vis, 0, sizeof(vis)); /* line 32 slow_hit_count: 27, fast_hit_count: 5 */
+  for (int i = 1; i <= tt; i++) dis[i] = -0x3f3f3f3f; /* line 33 slow_hit_count: 1416, fast_hit_count: 100 */
+  dis[ss] = 0; /* line 34 slow_hit_count: 27, fast_hit_count: 5 */
+  queue<int> s; /* line 35 slow_hit_count: 54, fast_hit_count: 10 */
+  s.push(ss); /* line 36 slow_hit_count: 27, fast_hit_count: 5 */
+  while (!s.empty()) { /* line 37 slow_hit_count: 1378, fast_hit_count: 85 */
+    int u = s.front(); /* line 38 slow_hit_count: 1351, fast_hit_count: 80 */
+    s.pop(); /* line 39 slow_hit_count: 1351, fast_hit_count: 80 */
+    vis[u] = 0; /* line 40 slow_hit_count: 1351, fast_hit_count: 80 */
+    for (int i = head[u]; i != -1; i = e[i].next) { /* line 41 slow_hit_count: 35799, fast_hit_count: 515 */
+      int v = e[i].to; /* line 42 slow_hit_count: 34448, fast_hit_count: 435 */
+      int w = e[i].w; /* line 43 slow_hit_count: 34448, fast_hit_count: 435 */
+      int f = e[i].f; /* line 44 slow_hit_count: 34448, fast_hit_count: 435 */
+      if (f && dis[v] < dis[u] + w) { /* line 45 slow_hit_count: 34448, fast_hit_count: 435 */
+        dis[v] = dis[u] + w; /* line 46 slow_hit_count: 2085, fast_hit_count: 87 */
+        pre[v] = u; /* line 47 slow_hit_count: 2085, fast_hit_count: 87 */
+        path[v] = e[i].num; /* line 48 slow_hit_count: 2085, fast_hit_count: 87 */
+        if (vis[v] == 0) { /* line 49 slow_hit_count: 2085, fast_hit_count: 87 */
+          vis[v] = 1; /* line 50 slow_hit_count: 1324, fast_hit_count: 75 */
+          s.push(v); /* line 51 slow_hit_count: 1324, fast_hit_count: 75 */
+        } /* line 52 slow_hit_count: 0, fast_hit_count: 0 */
+      } /* line 53 slow_hit_count: 0, fast_hit_count: 0 */
+    } /* line 54 slow_hit_count: 0, fast_hit_count: 0 */
+  } /* line 55 slow_hit_count: 0, fast_hit_count: 0 */
+  if (d == 1) { /* line 56 slow_hit_count: 27, fast_hit_count: 5 */
+    if (dis[tt] >= 0) /* line 57 slow_hit_count: 1, fast_hit_count: 5 */
+      return 1; /* line 58 slow_hit_count: 0, fast_hit_count: 4 */
+    else /* line 59 slow_hit_count: 0, fast_hit_count: 0 */
+      return 0; /* line 60 slow_hit_count: 1, fast_hit_count: 1 */
+  } else { /* line 61 slow_hit_count: 0, fast_hit_count: 0 */
+    if (dis[tt] != -0x3f3f3f3f) /* line 62 slow_hit_count: 26, fast_hit_count: 0 */
+      return 1; /* line 63 slow_hit_count: 25, fast_hit_count: 0 */
+    else /* line 64 slow_hit_count: 0, fast_hit_count: 0 */
+      return 0; /* line 65 slow_hit_count: 1, fast_hit_count: 0 */
+  } /* line 66 slow_hit_count: 0, fast_hit_count: 0 */
+} /* line 67 slow_hit_count: 0, fast_hit_count: 0 */
+void Slove() { /* line 68 slow_hit_count: 2, fast_hit_count: 1 */
+  d++; /* line 69 slow_hit_count: 2, fast_hit_count: 1 */
+  int ans = 0; /* line 70 slow_hit_count: 2, fast_hit_count: 1 */
+  int maxflow = 0; /* line 71 slow_hit_count: 2, fast_hit_count: 1 */
+  while (SPFA() == 1) { /* line 72 slow_hit_count: 27, fast_hit_count: 5 */
+    int minn = 0x3f3f3f3f; /* line 73 slow_hit_count: 25, fast_hit_count: 4 */
+    for (int i = tt; i != ss; i = pre[i]) { /* line 74 slow_hit_count: 102, fast_hit_count: 16 */
+      minn = min(minn, e[path[i]].f); /* line 75 slow_hit_count: 77, fast_hit_count: 12 */
+    } /* line 76 slow_hit_count: 0, fast_hit_count: 0 */
+    for (int i = tt; i != ss; i = pre[i]) { /* line 77 slow_hit_count: 102, fast_hit_count: 16 */
+      e[path[i]].f -= minn; /* line 78 slow_hit_count: 77, fast_hit_count: 12 */
+      e[path[i] ^ 1].f += minn; /* line 79 slow_hit_count: 77, fast_hit_count: 12 */
+    } /* line 80 slow_hit_count: 0, fast_hit_count: 0 */
+    maxflow += minn; /* line 81 slow_hit_count: 25, fast_hit_count: 4 */
+    ans += dis[tt] * minn; /* line 82 slow_hit_count: 25, fast_hit_count: 4 */
+  } /* line 83 slow_hit_count: 0, fast_hit_count: 0 */
+  output = max(output, ans); /* line 84 slow_hit_count: 2, fast_hit_count: 1 */
+} /* line 85 slow_hit_count: 2, fast_hit_count: 1 */
+int xx[150000]; /* line 86 slow_hit_count: 0, fast_hit_count: 0 */
+int main() { /* line 87 slow_hit_count: 2, fast_hit_count: 2 */
+  while (~scanf("%d%d", &nn, &mm)) { /* line 88 slow_hit_count: 2, fast_hit_count: 2 */
+    output = 0, d = 0; /* line 89 slow_hit_count: 1, fast_hit_count: 1 */
+    ss = nn + mm + 1; /* line 90 slow_hit_count: 1, fast_hit_count: 1 */
+    tt = nn + mm + 2; /* line 91 slow_hit_count: 1, fast_hit_count: 1 */
+    cont = 0; /* line 92 slow_hit_count: 1, fast_hit_count: 1 */
+    memset(head, -1, sizeof(head)); /* line 93 slow_hit_count: 1, fast_hit_count: 1 */
+    for (int i = 1; i <= nn; i++) { /* line 94 slow_hit_count: 11, fast_hit_count: 11 */
+      scanf("%s%d", a[i].op, &a[i].val); /* line 95 slow_hit_count: 10, fast_hit_count: 10 */
+    } /* line 96 slow_hit_count: 0, fast_hit_count: 0 */
+    for (int i = 1; i <= mm; i++) scanf("%d", &xx[i]); /* line 97 slow_hit_count: 26, fast_hit_count: 8 */
+    for (int i = 1; i <= mm; i++) add(ss, i, 1, 0), add(i, ss, 0, 0); /* line 98 slow_hit_count: 26, fast_hit_count: 8 */
+    for (int i = 1; i <= nn; i++) add(i + mm, tt, 1, 0), add(tt, i + mm, 0, 0); /* line 99 slow_hit_count: 11, fast_hit_count: 11 */
+    for (int i = 1; i <= mm; i++) { /* line 100 slow_hit_count: 26, fast_hit_count: 8 */
+      int x = xx[i]; /* line 101 slow_hit_count: 25, fast_hit_count: 7 */
+      for (int j = 1; j <= nn; j++) { /* line 102 slow_hit_count: 275, fast_hit_count: 77 */
+        if (a[j].op[0] == 'A' && x >= a[j].val) { /* line 103 slow_hit_count: 250, fast_hit_count: 70 */
+          add(i, j + mm, 1, x - a[j].val); /* line 104 slow_hit_count: 0, fast_hit_count: 28 */
+          add(j + mm, i, 0, -(x - a[j].val)); /* line 105 slow_hit_count: 0, fast_hit_count: 28 */
+        } /* line 106 slow_hit_count: 0, fast_hit_count: 0 */
+      } /* line 107 slow_hit_count: 0, fast_hit_count: 0 */
+    } /* line 108 slow_hit_count: 0, fast_hit_count: 0 */
+    Slove(); /* line 109 slow_hit_count: 1, fast_hit_count: 1 */
+    if (nn < mm) { /* line 110 slow_hit_count: 1, fast_hit_count: 1 */
+      ss = mm * 2 + 1; /* line 111 slow_hit_count: 1, fast_hit_count: 0 */
+      tt = ss + 1; /* line 112 slow_hit_count: 1, fast_hit_count: 0 */
+      cont = 0; /* line 113 slow_hit_count: 1, fast_hit_count: 0 */
+      memset(head, -1, sizeof(head)); /* line 114 slow_hit_count: 1, fast_hit_count: 0 */
+      for (int i = 1; i <= mm; i++) add(ss, i, 1, 0), add(i, ss, 0, 0); /* line 115 slow_hit_count: 26, fast_hit_count: 0 */
+      for (int i = 1; i <= nn; i++) /* line 116 slow_hit_count: 11, fast_hit_count: 0 */
+        add(i + mm, tt, 1, 0), add(tt, i + mm, 0, 0); /* line 117 slow_hit_count: 10, fast_hit_count: 0 */
+      for (int i = nn + 1; i <= mm; i++) /* line 118 slow_hit_count: 16, fast_hit_count: 0 */
+        add(i + mm, tt, 1, 0), add(tt, i + mm, 0, 0); /* line 119 slow_hit_count: 15, fast_hit_count: 0 */
+      for (int i = 1; i <= mm; i++) { /* line 120 slow_hit_count: 26, fast_hit_count: 0 */
+        int x = xx[i]; /* line 121 slow_hit_count: 25, fast_hit_count: 0 */
+        for (int j = 1; j <= nn; j++) { /* line 122 slow_hit_count: 275, fast_hit_count: 0 */
+          if (a[j].op[0] == 'A') { /* line 123 slow_hit_count: 250, fast_hit_count: 0 */
+            if (x >= a[j].val) { /* line 124 slow_hit_count: 225, fast_hit_count: 0 */
+              add(i, j + mm, 1, x - a[j].val); /* line 125 slow_hit_count: 0, fast_hit_count: 0 */
+              add(j + mm, i, 0, -(x - a[j].val)); /* line 126 slow_hit_count: 0, fast_hit_count: 0 */
+            } else { /* line 127 slow_hit_count: 0, fast_hit_count: 0 */
+              add(i, j + mm, 1, -10000000); /* line 128 slow_hit_count: 225, fast_hit_count: 0 */
+              add(j + mm, i, 0, 10000000); /* line 129 slow_hit_count: 225, fast_hit_count: 0 */
+            } /* line 130 slow_hit_count: 0, fast_hit_count: 0 */
+          } else { /* line 131 slow_hit_count: 0, fast_hit_count: 0 */
+            if (x > a[j].val) { /* line 132 slow_hit_count: 25, fast_hit_count: 0 */
+              add(i, j + mm, 1, 0); /* line 133 slow_hit_count: 11, fast_hit_count: 0 */
+              add(j + mm, i, 0, 0); /* line 134 slow_hit_count: 11, fast_hit_count: 0 */
+            } else { /* line 135 slow_hit_count: 0, fast_hit_count: 0 */
+              add(i, j + mm, 1, -10000000); /* line 136 slow_hit_count: 14, fast_hit_count: 0 */
+              add(j + mm, i, 0, 10000000); /* line 137 slow_hit_count: 14, fast_hit_count: 0 */
+            } /* line 138 slow_hit_count: 0, fast_hit_count: 0 */
+          } /* line 139 slow_hit_count: 0, fast_hit_count: 0 */
+        } /* line 140 slow_hit_count: 0, fast_hit_count: 0 */
+        for (int j = nn + 1; j <= mm; j++) { /* line 141 slow_hit_count: 400, fast_hit_count: 0 */
+          add(i, j + mm, 1, xx[i]); /* line 142 slow_hit_count: 375, fast_hit_count: 0 */
+          add(j + mm, i, 0, -xx[i]); /* line 143 slow_hit_count: 375, fast_hit_count: 0 */
+        } /* line 144 slow_hit_count: 0, fast_hit_count: 0 */
+      } /* line 145 slow_hit_count: 0, fast_hit_count: 0 */
+      Slove(); /* line 146 slow_hit_count: 1, fast_hit_count: 0 */
+    } /* line 147 slow_hit_count: 0, fast_hit_count: 0 */
+    printf("%d\n", output); /* line 148 slow_hit_count: 1, fast_hit_count: 1 */
+  } /* line 149 slow_hit_count: 0, fast_hit_count: 0 */
+} /* line 150 slow_hit_count: 1, fast_hit_count: 1 */
+
+
+assistant: To analyze the performance issues in the C code for the given problem, we need to derive performance-characterizing invariants based on the line-level hit counts and the problem's nature.
+
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+From the provided hit counts, the following observations can be made:
+
+1. **High Hit Counts**:
+   - The `add` function (lines 22-30) is called significantly more on the slow input than on the fast input. This indicates that edge additions to the graph data structure are a major part of the computation.
+   - The `SPFA` function (lines 31-67) and its nested loop (lines 37-55) have high hit counts, suggesting it runs many iterations, potentially due to a complex graph structure.
+   - Loops in the `main` function (particularly lines 100-108 and lines 120-145) are heavily traversed in the slow input, indicating that they might be contributing significantly to the slowdown.
+
+2. **Data Structures and Loop Interactions**:
+   - The construction of the graph via the `add` function is tightly coupled with the card strengths and positions, leading to many conditional checks and edge additions.
+   - The use of SPFA for maximum flow calculation suggests that the graph's complexity and the number of potential augmenting paths are crucial to performance.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on the above analysis, here are some natural language invariants describing conditions that lead to slow performance:
+
+1. **High Number of Edge Operations**:
+   - **Invariant**: "If the number of edges added to the graph is large, particularly if multiple edges are added for each card based on their strength comparisons, the program may enter a slow path due to extensive graph traversal and pathfinding."
+   - This condition is likely triggered when many of Ciel's cards can attack many of Jiro's cards, leading to a dense graph.
+
+2. **Complex Graph Structures in SPFA**:
+   - **Invariant**: "When the graph formed for flow calculations has a high number of nodes and edges, especially when the number of Ciel's cards (m) significantly exceeds Jiro's cards (n), the SPFA function may iterate extensively, causing a slowdown."
+   - This situation is exacerbated by the need to find maximum flow paths in a dense network of possible card interactions.
+
+3. **Inefficient Pathfinding with Defense Cards**:
+   - **Invariant**: "If many of Jiro's cards have the 'DEF' position and require Ciel's cards to have strictly greater strength, the program might perform excessive redundant calculations, trying different combinations, leading to inefficiencies."
+   - This condition involves checking many potential pairings to maximize damage, especially when defense cards are numerous or have low strength.
+
+4. **Repeated Graph Initialization**:
+   - **Invariant**: "The repeated initialization of the graph and recalculations (resetting head, vis, dis, etc.) when `nn < mm` implies more complex graph manipulations and can lead to performance degradation."
+   - This occurs because the program must reconfigure the flow network multiple times to handle edge cases in card numbers.
+
+These invariants suggest that the program's performance is heavily tied to the graph's complexity and the number of possible interactions between the cards. Understanding and optimizing these relationships could lead to better performance on slow inputs.
+
+user: (A) Context
+
+You have already:
+1. Identified expensive code segments (Phase 1).
+2. Derived performance-characterizing invariants in natural language (Phase 2).
+
+Now, you MUST transform these invariants into runtime checks and integrate them into the given C++ program.
+
+(B) Tasks: Revisit the performance-characteristic invariants you inferred in natural langauge and write faithful, error-free C++ code snippets to implement them
+
+You MUST do perform this task in two phases and provide separate answers for both: First, translating the invariants into checker code in C++ (phase 3, below). Second, integrating those checker C++ code snippets with the original program for which you inferred those invariants (phase 4, below).   
+
+Phase 3: Implement the natural language invariants inferred previously, in C++. In this phase you are asked to, 
+1. For each natural language invariant from Phase 2, you MUST produce C++ code that checks the condition at runtime.
+2. You MUST NOT relax or trivialize the checker code implementing these performance-characterizing invariants. You MUST faithfully implement them as described. 
+3. Use the following template for writing checker code in C++ which could also be implemented as a helper function:
+```cpp
+    if (/* condition based on the NL invariant */) {
+        cerr << "Warning: Performance bottleneck condition triggered!" << endl;
+        abort();
+    }
+``` 
+
+Note that not all performance-characterizing invariants are about maximising input size. You may refer to the following examples for inspiration --- some maximising the input size, some not --- but do not simply replicate them exactly. Rather, use them as inspiration to infer and tailor performance-characterizing invariants tailored for the C++ code and problem statement you were asked to analize:
+
+Example Invariant #1:
+
+A potential slowdown arises when certain arrays or lists grow large, causing repeated operations. One way to detect this is to check if the size of a critical array arr (used in a nested loop) exceeds a broad threshold.
+
+Natural language description: “If arr is very large and used in nested loops, the code may repeat operations too many times.”
+
+Code implementing the natural language description:
+
+```cpp
+// Sample checker function
+void check_size_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: size_invariant triggered - array too large for nested loops" << endl;
+        abort();
+    }
+}
+
+// Usage in main or function
+int arrSize = arr.size();
+check_size_invariant(arrSize > 50000);
+```
+
+Example Invariant #2:
+
+Repeated sorting or searching on a data structure can degrade performance, especially if the data structure is large or if the sorting is called multiple times in a loop.
+
+Natural language description: “If a large portion of the code’s execution time is spent in sorting a data structure repeatedly, performance may degrade. Check if the data structure is frequently resorted or reprocessed when it has many elements.”
+
+Code implementing the natural language description:
+
+```cpp
+void check_sort_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: sort_invariant triggered - repeatedly sorting large data" << endl;
+        abort();
+    }
+}
+
+// After reading input or before sorting
+int elementCount = someDataStructure.size();
+check_sort_invariant(elementCount > 100000 && /* some condition indicating repeated sorts */);
+```
+
+Example Invariant #3:
+
+Recursion (e.g., graph traversal or the iterative version of it, recurssive dynamic programming, recurssive computation like computing the next Fibonacci number, etc.) can become expensive if it explores a large search space. A sign of this might be a high branching factor combined with a deep recursion depth.
+
+Natural language description: “If the recursion depth is likely to exceed a certain level or if many branches are processed at each recursive call, the computation may become very expensive.”
+
+```cpp
+void check_dfs_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: dfs_invariant triggered - high recursion depth or branching factor" << endl;
+        abort();
+    }
+}
+
+// Before calling dfs or inside setup
+check_dfs_invariant((maxDepthEstimate > 50) && (branchFactorEstimate > 10));
+```
+
+Example Invariant #4:
+
+Memory usage spikes or large matrix operations can slow down computation if array dimensions become too large. If the program initializes a 2D array based on input dimensions n and m, certain input combinations can trigger large memory footprints or nested loops over the entire matrix.
+
+Natural language description: “If n and m together exceed a threshold that implies large matrix computations, the program may slow significantly.”
+
+```cpp
+void check_matrix_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: matrix_invariant triggered - potentially large matrix operations" << endl;
+        abort();
+    }
+}
+
+// After reading n, m
+check_matrix_invariant(n * m > 1000000);
+```
+
+Example invariant #5:
+
+If a program runs an expensive function or heavy-weight code (e.g. memory allocation) repeatedly within a performance-critical loop or function, the overhead for calling that function can accumulate, slowing the program significantly.
+
+Natural langauge description: "If function foo is an expensive function to execute, and is called a large number of times in a loop or recursive function, the program may slow down significantly"
+
+```cpp
+void check_expensive_function_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: expensive function invariant triggered - excessive calls" << endl;
+        abort();
+    }
+}
+
+check_expensive_function_invariant(n > 1000000);  // arbitrary, but large threshold
+for (i = 0; i < n; ++i) { 
+    foo(); // expensive function
+}
+```
+
+
+Phase 4: Propagate and insert conditional checks. In this phase you are asked to,
+1. Place each check at an effective point in the control/data flow (e.g., after reading inputs, before heavy loops) so you do not add overhead in tight loops. Note that the checker code could also be implemented as a helper function.
+2. If multiple checks overlap, merge or adjust them carefully to avoid redundant warnings.
+3. Provide the final, instrumented C++ code in code fences. Ensure it compiles cleanly and runs without errors.
+4. For each inserted check, add a short comment explaining which bottleneck it detects.
+
+Note the following important considerations when translating the inferred performance-characterizing invariants into code and propagating the checkers to the most efective program point by instrumenting the original code: 
+1. Avoid hardcoding. Don’t rely solely on the exact values from the provided slow input; think in terms of categories or thresholds that lead to slow execution.
+2. In addition to the warning message, remember to insert an "abort()" statement at the end of the checker.
+3. Focus on fuzzer utility. The checks should help a fuzzer detect slow performance triggers by hitting these conditions.
+
+As a refresher, below you are provided with the same program statement and C++ code for which you already inferred performance-characterizing invariants:
+
+Problem statement:
+Fox Ciel is playing a card game with her friend Jiro.
+
+Jiro has n cards, each one has two attributes: position (Attack or Defense) and strength. Fox Ciel has m cards, each one has these two attributes too. It's known that position of all Ciel's cards is Attack.
+
+Now is Ciel's battle phase, Ciel can do the following operation many times:
+
+  1. Choose one of her cards X. This card mustn't be chosen before. 
+  2. If Jiro has no alive cards at that moment, he gets the damage equal to (X's strength). Otherwise, Ciel needs to choose one Jiro's alive card Y, then: 
+    * If Y's position is Attack, then (X's strength)  ≥  (Y's strength) must hold. After this attack, card Y dies, and Jiro gets the damage equal to (X's strength) - (Y's strength). 
+    * If Y's position is Defense, then (X's strength)  > (Y's strength) must hold. After this attack, card Y dies, but Jiro gets no damage. 
+
+
+
+Ciel can end her battle phase at any moment (so, she can use not all her cards). Help the Fox to calculate the maximal sum of damage Jiro can get.
+
+Input
+
+The first line contains two integers n and m (1 ≤ n, m ≤ 100) — the number of cards Jiro and Ciel have.
+
+Each of the next n lines contains a string position and an integer strength (0 ≤ strength ≤ 8000) — the position and strength of Jiro's current card. Position is the string "ATK" for attack, and the string "DEF" for defense.
+
+Each of the next m lines contains an integer strength (0 ≤ strength ≤ 8000) — the strength of Ciel's current card.
+
+Output
+
+Output an integer: the maximal damage Jiro can get.
+
+Examples
+
+Input
+
+2 3
+ATK 2000
+DEF 1700
+2500
+2500
+2500
+
+
+Output
+
+3000
+
+
+Input
+
+3 4
+ATK 10
+ATK 100
+ATK 1000
+1
+11
+101
+1001
+
+
+Output
+
+992
+
+
+Input
+
+2 4
+DEF 0
+ATK 0
+0
+0
+1
+1
+
+
+Output
+
+1
+
+Note
+
+In the first test case, Ciel has 3 cards with same strength. The best strategy is as follows. First she uses one of these 3 cards to attack "ATK 2000" card first, this attack destroys that card and Jiro gets 2500 - 2000 = 500 damage. Then she uses the second card to destroy the "DEF 1700" card. Jiro doesn't get damage that time. Now Jiro has no cards so she can use the third card to attack and Jiro gets 2500 damage. So the answer is 500 + 2500 = 3000.
+
+In the second test case, she should use the "1001" card to attack the "ATK 100" card, then use the "101" card to attack the "ATK 10" card. Now Ciel still has cards but she can choose to end her battle phase. The total damage equals (1001 - 100) + (101 - 10) = 992.
+
+In the third test case note that she can destroy the "ATK 0" card by a card with strength equal to 0, but she can't destroy a "DEF 0" card with that card.
+
+Solution (C++ code):
+{solution}
+
+
+assistant: ### Phase 3: Implementing Performance Invariants as C++ Checkers
+
+Here are the C++ code snippets to implement the performance-characterizing invariants derived in natural language:
+
+```cpp
+void check_edge_addition_invariant(int edgeCount) {
+    if (edgeCount > 10000) { // Arbitrary threshold for edge count
+        cerr << "Warning: Performance bottleneck condition triggered - excessive edges added!" << endl;
+        abort();
+    }
+}
+
+void check_spfa_complexity_invariant(int numNodes, int numEdges) {
+    if (numNodes * numEdges > 10000) { // Complexity is roughly proportional to the product of nodes and edges
+        cerr << "Warning: Performance bottleneck condition triggered - complex graph in SPFA!" << endl;
+        abort();
+    }
+}
+
+void check_defensive_cards_invariant(int defCardCount, int cielCardCount) {
+    if (defCardCount > cielCardCount / 2) { // If many defense cards relative to Ciel's cards
+        cerr << "Warning: Performance bottleneck condition triggered - too many defense cards!" << endl;
+        abort();
+    }
+}
+
+void check_graph_reinitialization_invariant(int nn, int mm) {
+    if (nn < mm) { // Graph re-initialization when nn < mm
+        cerr << "Warning: Performance bottleneck condition triggered - repeated graph initialization!" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrating Checkers into the Program
+
+In this phase, we'll integrate the performance checkers into the original C++ code. We'll insert the checks at strategic points in the code to ensure we catch potential bottlenecks without significantly adding overhead to the main algorithm.
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+int output, d;
+
+struct node {
+    int from;
+    int to;
+    int w;
+    int f;
+    int num;
+    int next;
+} e[2000000];
+
+int head[150000];
+int vis[150000];
+int dis[150000];
+int pre[150000];
+int path[150000];
+
+struct node2 {
+    char op[150];
+    int val;
+} a[15000];
+
+int n, ss, tt, cont, nn, mm;
+
+void add(int from, int to, int f, int w) {
+    e[cont].from = from;
+    e[cont].to = to;
+    e[cont].f = f;
+    e[cont].w = w;
+    e[cont].num = cont;
+    e[cont].next = head[from];
+    head[from] = cont++;
+
+    // Check for excessive edge additions
+    check_edge_addition_invariant(cont);
+}
+
+int SPFA() {
+    memset(vis, 0, sizeof(vis));
+    for (int i = 1; i <= tt; i++) dis[i] = -0x3f3f3f3f;
+    dis[ss] = 0;
+    queue<int> s;
+    s.push(ss);
+    while (!s.empty()) {
+        int u = s.front();
+        s.pop();
+        vis[u] = 0;
+        for (int i = head[u]; i != -1; i = e[i].next) {
+            int v = e[i].to;
+            int w = e[i].w;
+            int f = e[i].f;
+            if (f && dis[v] < dis[u] + w) {
+                dis[v] = dis[u] + w;
+                pre[v] = u;
+                path[v] = e[i].num;
+                if (vis[v] == 0) {
+                    vis[v] = 1;
+                    s.push(v);
+                }
+            }
+        }
+    }
+    if (d == 1) {
+        if (dis[tt] >= 0)
+            return 1;
+        else
+            return 0;
+    } else {
+        if (dis[tt] != -0x3f3f3f3f)
+            return 1;
+        else
+            return 0;
+    }
+}
+
+void Slove() {
+    d++;
+    int ans = 0;
+    int maxflow = 0;
+    while (SPFA() == 1) {
+        int minn = 0x3f3f3f3f;
+        for (int i = tt; i != ss; i = pre[i]) {
+            minn = min(minn, e[path[i]].f);
+        }
+        for (int i = tt; i != ss; i = pre[i]) {
+            e[path[i]].f -= minn;
+            e[path[i] ^ 1].f += minn;
+        }
+        maxflow += minn;
+        ans += dis[tt] * minn;
+    }
+    output = max(output, ans);
+}
+
+int xx[150000];
+
+int main() {
+    while (~scanf("%d%d", &nn, &mm)) {
+        output = 0, d = 0;
+        ss = nn + mm + 1;
+        tt = nn + mm + 2;
+        cont = 0;
+        memset(head, -1, sizeof(head));
+        for (int i = 1; i <= nn; i++) {
+            scanf("%s%d", a[i].op, &a[i].val);
+        }
+        for (int i = 1; i <= mm; i++) scanf("%d", &xx[i]);
+
+        // Check for complex graph setup
+        check_spfa_complexity_invariant(nn + mm, cont);
+
+        for (int i = 1; i <= mm; i++) add(ss, i, 1, 0), add(i, ss, 0, 0);
+        for (int i = 1; i <= nn; i++) add(i + mm, tt, 1, 0), add(tt, i + mm, 0, 0);
+        for (int i = 1; i <= mm; i++) {
+            int x = xx[i];
+            for (int j = 1; j <= nn; j++) {
+                if (a[j].op[0] == 'A' && x >= a[j].val) {
+                    add(i, j + mm, 1, x - a[j].val);
+                    add(j + mm, i, 0, -(x - a[j].val));
+                }
+            }
+        }
+        Slove();
+        if (nn < mm) {
+            // Check for repeated graph initialization
+            check_graph_reinitialization_invariant(nn, mm);
+
+            ss = mm * 2 + 1;
+            tt = ss + 1;
+            cont = 0;
+            memset(head, -1, sizeof(head));
+            for (int i = 1; i <= mm; i++) add(ss, i, 1, 0), add(i, ss, 0, 0);
+            for (int i = 1; i <= nn; i++)
+                add(i + mm, tt, 1, 0), add(tt, i + mm, 0, 0);
+            for (int i = nn + 1; i <= mm; i++)
+                add(i + mm, tt, 1, 0), add(tt, i + mm, 0, 0);
+            for (int i = 1; i <= mm; i++) {
+                int x = xx[i];
+                for (int j = 1; j <= nn; j++) {
+                    if (a[j].op[0] == 'A') {
+                        if (x >= a[j].val) {
+                            add(i, j + mm, 1, x - a[j].val);
+                            add(j + mm, i, 0, -(x - a[j].val));
+                        } else {
+                            add(i, j + mm, 1, -10000000);
+                            add(j + mm, i, 0, 10000000);
+                        }
+                    } else {
+                        if (x > a[j].val) {
+                            add(i, j + mm, 1, 0);
+                            add(j + mm, i, 0, 0);
+                        } else {
+                            add(i, j + mm, 1, -10000000);
+                            add(j + mm, i, 0, 10000000);
+                        }
+                    }
+                }
+                for (int j = nn + 1; j <= mm; j++) {
+                    add(i, j + mm, 1, xx[i]);
+                    add(j + mm, i, 0, -xx[i]);
+                }
+            }
+            Slove();
+        }
+
+        // Check for excessive defense cards
+        int defCardCount = 0;
+        for (int i = 1; i <= nn; i++) {
+            if (a[i].op[0] == 'D') {
+                defCardCount++;
+            }
+        }
+        check_defensive_cards_invariant(defCardCount, mm);
+
+        printf("%d\n", output);
+    }
+}
+```
+
+**Explanation**:
+
+- **Edge Addition Checker**: Placed inside the `add` function to monitor the number of edges being added, as excessive edges indicate a dense graph that can slow down the program.
+  
+- **SPFA Complexity Checker**: Added after reading inputs, before adding nodes and edges to ensure the graph's complexity does not exceed a threshold that would lead to performance degradation.
+
+- **Reinitialization Checker**: Checks if `nn < mm` before resetting the graph, which can cause performance hits due to repeated setups.
+
+- **Defensive Cards Checker**: Added after constructing the graph structure to ensure that a high number of defensive cards does not introduce too much overhead by requiring multiple checks and setups.
+

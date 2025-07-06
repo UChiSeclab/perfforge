@@ -1,0 +1,189 @@
+=== Invariants Response ===
+To analyze the performance bottlenecks in the given C program and derive performance-characterizing invariants, we can follow these phases:
+
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+1. **Hit Count Analysis:**
+   - The `poli` function is called significantly more times in the slow input compared to the fast input. The slow input triggers 207 calls to `poli`, hitting lines inside this function (lines 12-15) over 20,000 times, while the fast input does not trigger this function.
+   - The loop inside `poli` iterates `n` times (lines 12-15), contributing to the high hit count when `poli` is called multiple times.
+
+2. **Data Structure and Loop Interactions:**
+   - The function `poli` evaluates a polynomial modulo a given value, and it does so by iterating through the coefficients of the polynomial.
+   - The slow input causes multiple evaluations of this polynomial for different moduli, as seen in the calls with varying `mod` values in lines 58-61.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on this analysis, we can articulate the conditions under which the program is likely to enter a slow path, focusing on how the slow input interacts with the code:
+
+1. **Polynomial Evaluations:**
+   - **Invariant:** "When the polynomial evaluation function `poli` is invoked repeatedly with different moduli for a polynomial with numerous coefficients, the computation time increases significantly, especially when `n` is large."
+   - This invariant captures the repeated computation triggered by the polynomial evaluations over multiple moduli values.
+
+2. **Size of n:**
+   - **Invariant:** "If the polynomial degree `n` is close to the upper limit of the constraint (e.g., `n` is near 100,000), and many coefficients are fixed, the repeated modulo evaluations may lead to performance slowdowns."
+   - This reflects how high values of `n` and the presence of defined coefficients can increase the number of operations.
+
+3. **Loop Execution:**
+   - **Invariant:** "When the number of undefined coefficients is low, but the degree `n` is large, the loop inside `poli` runs numerous times for each call, leading to substantial computation, especially when each iteration involves non-trivial arithmetic operations."
+   - This is due to fewer undefined coefficients prompting exhaustive polynomial evaluations to determine divisibility.
+
+These invariants highlight potential scenarios causing slow performance based on the program's logic and the structure of the input, providing a guide for understanding slow execution paths.
+
+=== Checker Response ===
+### Phase 3: Implementing the Natural Language Invariants as C++ Checkers
+
+Below are the C++ code snippets that implement the performance-characterizing invariants derived earlier:
+
+1. **Invariant for Polynomial Evaluations:**
+   - **Condition:** If `poli` is called repeatedly with different moduli for a polynomial with numerous coefficients.
+   
+   ```cpp
+   void check_polynomial_evaluation_invariant(int callCount, int degree) {
+       if (callCount > 200 && degree > 50000) {
+           cerr << "Warning: Performance bottleneck condition triggered - excessive polynomial evaluations!" << endl;
+           abort();
+       }
+   }
+   ```
+
+2. **Invariant for Size of n:**
+   - **Condition:** If the polynomial degree `n` is large and many coefficients are predetermined.
+   
+   ```cpp
+   void check_large_degree_invariant(int degree, int definedCount) {
+       if (degree > 90000 && definedCount > degree / 2) {
+           cerr << "Warning: Performance bottleneck condition triggered - large polynomial degree with many defined coefficients!" << endl;
+           abort();
+       }
+   }
+   ```
+
+3. **Invariant for Loop Execution:**
+   - **Condition:** If the loop inside `poli` runs repeatedly with non-trivial arithmetic operations.
+   
+   ```cpp
+   void check_loop_execution_invariant(int loopIterations, int calls) {
+       if (loopIterations * calls > 100000 && loopIterations > 1000) {
+           cerr << "Warning: Performance bottleneck condition triggered - excessive loop iterations in `poli` function!" << endl;
+           abort();
+       }
+   }
+   ```
+
+### Phase 4: Integrating the Checkers into the Original Program
+
+Here's the full C++ program with integrated checker functions:
+
+```cpp
+#include <bits/stdc++.h>
+const int INF = 2e9 + 7;
+const long long INFLL = 1e16 + 7;
+const double EPS = 1e-6;
+using namespace std;
+const int maxn = 1e5 + 5;
+int n, m;
+int a[maxn];
+
+void check_polynomial_evaluation_invariant(int callCount, int degree) {
+    if (callCount > 200 && degree > 50000) {
+        cerr << "Warning: Performance bottleneck condition triggered - excessive polynomial evaluations!" << endl;
+        abort();
+    }
+}
+
+void check_large_degree_invariant(int degree, int definedCount) {
+    if (degree > 90000 && definedCount > degree / 2) {
+        cerr << "Warning: Performance bottleneck condition triggered - large polynomial degree with many defined coefficients!" << endl;
+        abort();
+    }
+}
+
+void check_loop_execution_invariant(int loopIterations, int calls) {
+    if (loopIterations * calls > 100000 && loopIterations > 1000) {
+        cerr << "Warning: Performance bottleneck condition triggered - excessive loop iterations in `poli` function!" << endl;
+        abort();
+    }
+}
+
+int poli(long long mod, int &callCount) {
+    long long now = 1;
+    long long ret = 0;
+    int loopIterations = 0; // Track iterations for loop execution invariant
+    for (int k = 0; k < n; k++) {
+        ret += now * a[k];
+        ret %= mod;
+        now = (now * m) % mod;
+        loopIterations++;
+    }
+    callCount++;
+    check_loop_execution_invariant(loopIterations, callCount);
+    if (ret) return 1;
+    return 0;
+}
+
+int main() {
+    scanf("%d%d", &n, &m);
+    n++;
+    int last = -1, sum = 0;
+    int definedCount = 0; // Track number of defined coefficients
+    for (int k = 0; k < n; k++) {
+        char tmp[100];
+        scanf("%s", &tmp);
+        if (tmp[0] == '?') {
+            last = k & 1;
+            a[k] = INF;
+            sum++;
+        } else {
+            sscanf(tmp, "%d", &a[k]);
+            definedCount++;
+        }
+    }
+
+    check_large_degree_invariant(n, definedCount);
+
+    if (m == 0) {
+        if (a[0] != INF) {
+            if (a[0] == 0)
+                printf("Yes\n");
+            else
+                printf("No\n");
+        } else {
+            if ((n - sum) % 2)
+                printf("Yes\n");
+            else
+                printf("No\n");
+        }
+        return 0;
+    }
+
+    if (last != -1) {
+        if (n % 2 == 0)
+            printf("Yes\n");
+        else
+            printf("No\n");
+        return 0;
+    }
+
+    int cek = 0;
+    long long ten[25];
+    ten[0] = 1;
+    for (int k = 1; k < 18; k++) ten[k] = ten[k - 1] * 10;
+
+    int callCount = 0; // Initialize call count for polynomial evaluation invariant
+    for (int k = 3; k < 9; k++) cek = (cek | poli(ten[k] + 7, callCount));
+    cek = (cek | poli(ten[9], callCount));
+    for (int k = INF; k < INF + 200; k++) cek = (cek | poli(k, callCount));
+
+    check_polynomial_evaluation_invariant(callCount, n);
+
+    if (cek == 0)
+        printf("Yes\n");
+    else
+        printf("No\n");
+    return 0;
+}
+```
+
+**Comments:**
+- Each check is placed after the relevant computation to monitor conditions that may lead to performance issues.
+- The check functions use thresholds that are reasonable and aligned with the constraints of the problem (e.g., `n <= 100,000`).

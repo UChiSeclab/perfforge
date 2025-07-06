@@ -1,0 +1,824 @@
+system: You are a helpful assistant good at coding.
+
+user: (A) Context
+
+You are an experienced C software engineer focusing on performance bottlenecks. You have:
+1. A problem statement describing a task or algorithm (with constraints such as n <= 100).
+2. A C program that implements a solution to that problem.
+3. Two inputs: a “fast” input that completes quickly, and a “slow” input that takes much longer—both inputs have similar size/structure.
+4. Line-level hit counts for both runs, showing which lines get hit significantly more often on the slow input.
+
+Your goal is to diagnose why the program runs slowly for the slow input and derive conditions or invariants that capture what triggers this slowdown.
+
+(B) Tasks: Analyze the given code and generate performance-characterizing invariants in natural language
+
+Phase 1: Identify expensive or onefficient code segments. In this phase you are asked to,
+1. Compare line-level hit counts between the fast and slow runs.
+2. Pinpoint lines or functions that get significantly more hits under the slow input.
+3. Infer how these lines might be interacting with data structures, loops, recursion, etc., especially as they relate to the input constraints (e.g., n <= 100).
+
+Phase 2: Derive performance-characterizing invariants (natural language). In this phase you are asked to,
+1. Generate natural language statements that describe conditions under which the program likely enters a slow path.
+2. Avoid using specific numeric values from the slow input; abstract them into categories or thresholds. However, make sure those thresholds adhere to the input constraints of the problem.
+3. Correlate these conditions strongly to input patterns (e.g., “when n is close to 100 and there is a nested loop,” or “when a data structure is repeatedly sorted”).
+4. Ensure your statements are broad enough to catch possible future slow scenarios, but still reflect realistic triggers given the constraints (like n <= 100).
+
+Note that not all performance-characterizing invariants are about maximising input size. You may refer to the following examples for inspiration --- some maximising the input size, some not --- but do not simply replicate them exactly. Rather, use them as inspiration to infer and tailor performance-characterizing invariants tailored for the C code and problem statement you were asked to analize:
+
+Example Invariant #1:
+
+A potential slowdown arises when certain arrays or lists grow large, causing repeated operations. One way to detect this is to check if the size of a critical array arr (used in a nested loop) exceeds a broad threshold.
+
+Natural language description: “If arr is very large and used in nested loops, the code may repeat operations too many times.”
+
+Code implementing the natural language description:
+
+```cpp
+// Sample checker function
+void check_size_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: size_invariant triggered - array too large for nested loops" << endl;
+        abort();
+    }
+}
+
+// Usage in main or function
+int arrSize = arr.size();
+check_size_invariant(arrSize > 50000);
+```
+
+Example Invariant #2:
+
+Repeated sorting or searching on a data structure can degrade performance, especially if the data structure is large or if the sorting is called multiple times in a loop.
+
+Natural language description: “If a large portion of the code’s execution time is spent in sorting a data structure repeatedly, performance may degrade. Check if the data structure is frequently resorted or reprocessed when it has many elements.”
+
+Code implementing the natural language description:
+
+```cpp
+void check_sort_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: sort_invariant triggered - repeatedly sorting large data" << endl;
+        abort();
+    }
+}
+
+// After reading input or before sorting
+int elementCount = someDataStructure.size();
+check_sort_invariant(elementCount > 100000 && /* some condition indicating repeated sorts */);
+```
+
+Example Invariant #3:
+
+Recursion (e.g., graph traversal or the iterative version of it, recurssive dynamic programming, recurssive computation like computing the next Fibonacci number, etc.) can become expensive if it explores a large search space. A sign of this might be a high branching factor combined with a deep recursion depth.
+
+Natural language description: “If the recursion depth is likely to exceed a certain level or if many branches are processed at each recursive call, the computation may become very expensive.”
+
+```cpp
+void check_dfs_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: dfs_invariant triggered - high recursion depth or branching factor" << endl;
+        abort();
+    }
+}
+
+// Before calling dfs or inside setup
+check_dfs_invariant((maxDepthEstimate > 50) && (branchFactorEstimate > 10));
+```
+
+Example Invariant #4:
+
+Memory usage spikes or large matrix operations can slow down computation if array dimensions become too large. If the program initializes a 2D array based on input dimensions n and m, certain input combinations can trigger large memory footprints or nested loops over the entire matrix.
+
+Natural language description: “If n and m together exceed a threshold that implies large matrix computations, the program may slow significantly.”
+
+```cpp
+void check_matrix_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: matrix_invariant triggered - potentially large matrix operations" << endl;
+        abort();
+    }
+}
+
+// After reading n, m
+check_matrix_invariant(n * m > 1000000);
+```
+
+Example invariant #5:
+
+If a program runs an expensive function or heavy-weight code (e.g. memory allocation) repeatedly within a performance-critical loop or function, the overhead for calling that function can accumulate, slowing the program significantly.
+
+Natural langauge description: "If function foo is an expensive function to execute, and is called a large number of times in a loop or recursive function, the program may slow down significantly"
+
+```cpp
+void check_expensive_function_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: expensive function invariant triggered - excessive calls" << endl;
+        abort();
+    }
+}
+
+check_expensive_function_invariant(n > 1000000);  // arbitrary, but large threshold
+for (i = 0; i < n; ++i) { 
+    foo(); // expensive function
+}
+```
+
+(C) Output Requirements
+1. Provide a list of natural language performance invariants explaining under what conditions the code slows down.
+2. Do not mention or rely on exact values from the provided slow input.
+3. Use or suggest threshold values that align with problem constraints (e.g., n <= 100).
+4. The output should be a concise, descriptive set of statements about performance triggers.
+
+(D) Important Considerations
+1. Avoid hardcoding. Don’t rely solely on the exact values from the provided slow input; think in terms of categories or thresholds that lead to slow execution.
+2. Avoid checks inside tight loops. Place checks in a way that does not significantly degrade performance.
+3. Focus on fuzzer utility. The checks should help a fuzzer detect slow performance triggers by hitting these conditions.
+
+(E) Problem Statement
+
+Polycarp lives on a coordinate line at the point x = 0. He goes to his friend that lives at the point x = a. Polycarp can move only from left to right, he can pass one unit of length each second.
+
+Now it's raining, so some segments of his way are in the rain. Formally, it's raining on n non-intersecting segments, the i-th segment which is in the rain is represented as [l_i, r_i] (0 ≤ l_i < r_i ≤ a).
+
+There are m umbrellas lying on the line, the i-th umbrella is located at point x_i (0 ≤ x_i ≤ a) and has weight p_i. When Polycarp begins his journey, he doesn't have any umbrellas.
+
+During his journey from x = 0 to x = a Polycarp can pick up and throw away umbrellas. Polycarp picks up and throws down any umbrella instantly. He can carry any number of umbrellas at any moment of time. Because Polycarp doesn't want to get wet, he must carry at least one umbrella while he moves from x to x + 1 if a segment [x, x + 1] is in the rain (i.e. if there exists some i such that l_i ≤ x and x + 1 ≤ r_i).
+
+The condition above is the only requirement. For example, it is possible to go without any umbrellas to a point where some rain segment starts, pick up an umbrella at this point and move along with an umbrella. Polycarp can swap umbrellas while he is in the rain.
+
+Each unit of length passed increases Polycarp's fatigue by the sum of the weights of umbrellas he carries while moving.
+
+Can Polycarp make his way from point x = 0 to point x = a? If yes, find the minimum total fatigue after reaching x = a, if Polycarp picks up and throws away umbrellas optimally.
+
+Input
+
+The first line contains three integers a, n and m (1 ≤ a, m ≤ 2000, 1 ≤ n ≤ ⌈a/2⌉) — the point at which Polycarp's friend lives, the number of the segments in the rain and the number of umbrellas.
+
+Each of the next n lines contains two integers l_i and r_i (0 ≤ l_i < r_i ≤ a) — the borders of the i-th segment under rain. It is guaranteed that there is no pair of intersecting segments. In other words, for each pair of segments i and j either r_i < l_j or r_j < l_i.
+
+Each of the next m lines contains two integers x_i and p_i (0 ≤ x_i ≤ a, 1 ≤ p_i ≤ 10^5) — the location and the weight of the i-th umbrella.
+
+Output
+
+Print "-1" (without quotes) if Polycarp can't make his way from point x = 0 to point x = a. Otherwise print one integer — the minimum total fatigue after reaching x = a, if Polycarp picks up and throws away umbrellas optimally.
+
+Examples
+
+Input
+
+10 2 4
+3 7
+8 10
+0 10
+3 4
+8 1
+1 2
+
+
+Output
+
+14
+
+
+Input
+
+10 1 1
+0 9
+0 5
+
+
+Output
+
+45
+
+
+Input
+
+10 1 1
+0 9
+1 5
+
+
+Output
+
+-1
+
+Note
+
+In the first example the only possible strategy is to take the fourth umbrella at the point x = 1, keep it till the point x = 7 (the total fatigue at x = 7 will be equal to 12), throw it away, move on from x = 7 to x = 8 without an umbrella, take the third umbrella at x = 8 and keep it till the end (the total fatigue at x = 10 will be equal to 14). 
+
+In the second example the only possible strategy is to take the first umbrella, move with it till the point x = 9, throw it away and proceed without an umbrella till the end.
+
+(F) Program Solving the Problem Statement
+
+#include <bits/stdc++.h>
+using namespace std;
+using ll = long long;
+using ld = long double;
+const ll inf = 1e10;
+const ll mod = 1e9 + 7;
+const ll MOD = 998244353;
+const ll MAX = 2e5 + 1;
+inline ll add(ll a, ll b) { return ((a % mod) + (b % mod)) % mod; }
+inline ll sub(ll a, ll b) { return ((a % mod) - (b % mod) + mod) % mod; }
+inline ll mul(ll a, ll b) { return ((a % mod) * (b % mod)) % mod; }
+ll pwr(ll x, ll n) {
+  if (!n) return 1;
+  if (n & 1)
+    return mul(x, pwr(mul(x, x), (n - 1) / 2));
+  else
+    return pwr(mul(x, x), n / 2);
+}
+ll modinv(ll n) { return pwr(n, mod - 2); }
+ll n, m, q;
+ll rain[2005], fatigue[2005], dp[2005][2005][2];
+ll rec(ll i, ll j, ll f) {
+  if (i > n) {
+    return 0;
+  }
+  if (dp[i][j][f] != -1) {
+    return dp[i][j][f];
+  }
+  if (f) {
+    if (!rain[i]) {
+      return dp[i][j][f] =
+                 min(rec(i + 1, j, 1) + fatigue[j],
+                     min(rec(i + 1, i, 1) + fatigue[i], rec(i + 1, n + 1, 0)));
+    } else {
+      return dp[i][j][f] = min(rec(i + 1, j, 1) + fatigue[j],
+                               rec(i + 1, i, 1) + fatigue[i]);
+    }
+  } else {
+    if (!rain[i]) {
+      return dp[i][j][f] =
+                 min(rec(i + 1, i, 1) + fatigue[i], rec(i + 1, n + 1, 0));
+    } else {
+      return dp[i][j][f] = rec(i + 1, i, 1) + fatigue[i];
+    }
+  }
+}
+void speed_solve() {
+  cin >> n >> q >> m;
+  memset(rain, 0, sizeof(rain));
+  for (ll i = 0; i < q; i++) {
+    ll l, r;
+    cin >> l >> r;
+    for (ll j = l; j < r; j++) {
+      rain[j] = 1;
+    }
+  }
+  for (ll i = 0; i < 2005; i++) {
+    fatigue[i] = inf;
+  }
+  for (ll i = 0; i < m; i++) {
+    ll x, p;
+    cin >> x >> p;
+    fatigue[x] = min(fatigue[x], p);
+  }
+  memset(dp, -1, sizeof(dp));
+  ll ans = rec(0, n + 1, 0);
+  if (ans >= inf) {
+    ans = -1;
+  }
+  cout << ans << "\n";
+}
+int main() {
+  ios_base::sync_with_stdio(false);
+  cin.tie(0);
+  cout.tie(0);
+  ll test_cases = 1;
+  for (ll i = 0; i < test_cases; i++) {
+    speed_solve();
+  }
+  return 0;
+}
+
+
+(G) The Slow & Fast Inputs
+
+(G.1) Slow Input
+
+2000 1 1
+0 1
+521 19267
+
+
+(G.2) Fast Input
+
+1118 1 1
+0 1
+521 19267
+
+
+(H) Hit Count Information of Slow Input and Fast Input (Aggregated):
+
+#include <bits/stdc++.h> /* line 1 slow_hit_count: 0, fast_hit_count: 0 */
+using namespace std; /* line 2 slow_hit_count: 0, fast_hit_count: 0 */
+using ll = long long; /* line 3 slow_hit_count: 0, fast_hit_count: 0 */
+using ld = long double; /* line 4 slow_hit_count: 0, fast_hit_count: 0 */
+const ll inf = 1e10; /* line 5 slow_hit_count: 0, fast_hit_count: 0 */
+const ll mod = 1e9 + 7; /* line 6 slow_hit_count: 0, fast_hit_count: 0 */
+const ll MOD = 998244353; /* line 7 slow_hit_count: 0, fast_hit_count: 0 */
+const ll MAX = 2e5 + 1; /* line 8 slow_hit_count: 0, fast_hit_count: 0 */
+inline ll add(ll a, ll b) { return ((a % mod) + (b % mod)) % mod; } /* line 9 slow_hit_count: 0, fast_hit_count: 0 */
+inline ll sub(ll a, ll b) { return ((a % mod) - (b % mod) + mod) % mod; } /* line 10 slow_hit_count: 0, fast_hit_count: 0 */
+inline ll mul(ll a, ll b) { return ((a % mod) * (b % mod)) % mod; } /* line 11 slow_hit_count: 0, fast_hit_count: 0 */
+ll pwr(ll x, ll n) { /* line 12 slow_hit_count: 0, fast_hit_count: 0 */
+  if (!n) return 1; /* line 13 slow_hit_count: 0, fast_hit_count: 0 */
+  if (n & 1) /* line 14 slow_hit_count: 0, fast_hit_count: 0 */
+    return mul(x, pwr(mul(x, x), (n - 1) / 2)); /* line 15 slow_hit_count: 0, fast_hit_count: 0 */
+  else /* line 16 slow_hit_count: 0, fast_hit_count: 0 */
+    return pwr(mul(x, x), n / 2); /* line 17 slow_hit_count: 0, fast_hit_count: 0 */
+} /* line 18 slow_hit_count: 0, fast_hit_count: 0 */
+ll modinv(ll n) { return pwr(n, mod - 2); } /* line 19 slow_hit_count: 0, fast_hit_count: 0 */
+ll n, m, q; /* line 20 slow_hit_count: 0, fast_hit_count: 0 */
+ll rain[2005], fatigue[2005], dp[2005][2005][2]; /* line 21 slow_hit_count: 0, fast_hit_count: 0 */
+ll rec(ll i, ll j, ll f) { /* line 22 slow_hit_count: 6007000, fast_hit_count: 1878799 */
+  if (i > n) { /* line 23 slow_hit_count: 6007000, fast_hit_count: 1878799 */
+    return 0; /* line 24 slow_hit_count: 6002, fast_hit_count: 3356 */
+  } /* line 25 slow_hit_count: 0, fast_hit_count: 0 */
+  if (dp[i][j][f] != -1) { /* line 26 slow_hit_count: 6000998, fast_hit_count: 1875443 */
+    return dp[i][j][f]; /* line 27 slow_hit_count: 3997998, fast_hit_count: 1248804 */
+  } /* line 28 slow_hit_count: 0, fast_hit_count: 0 */
+  if (f) { /* line 29 slow_hit_count: 2003000, fast_hit_count: 626639 */
+    if (!rain[i]) { /* line 30 slow_hit_count: 2001000, fast_hit_count: 625521 */
+      return dp[i][j][f] = /* line 31 slow_hit_count: 2001000, fast_hit_count: 625521 */
+                 min(rec(i + 1, j, 1) + fatigue[j], /* line 32 slow_hit_count: 2001000, fast_hit_count: 625521 */
+                     min(rec(i + 1, i, 1) + fatigue[i], rec(i + 1, n + 1, 0))); /* line 33 slow_hit_count: 4002000, fast_hit_count: 1251042 */
+    } else { /* line 34 slow_hit_count: 0, fast_hit_count: 0 */
+      return dp[i][j][f] = min(rec(i + 1, j, 1) + fatigue[j], /* line 35 slow_hit_count: 0, fast_hit_count: 0 */
+                               rec(i + 1, i, 1) + fatigue[i]); /* line 36 slow_hit_count: 0, fast_hit_count: 0 */
+    } /* line 37 slow_hit_count: 0, fast_hit_count: 0 */
+  } else { /* line 38 slow_hit_count: 0, fast_hit_count: 0 */
+    if (!rain[i]) { /* line 39 slow_hit_count: 2000, fast_hit_count: 1118 */
+      return dp[i][j][f] = /* line 40 slow_hit_count: 1999, fast_hit_count: 1117 */
+                 min(rec(i + 1, i, 1) + fatigue[i], rec(i + 1, n + 1, 0)); /* line 41 slow_hit_count: 1999, fast_hit_count: 1117 */
+    } else { /* line 42 slow_hit_count: 0, fast_hit_count: 0 */
+      return dp[i][j][f] = rec(i + 1, i, 1) + fatigue[i]; /* line 43 slow_hit_count: 1, fast_hit_count: 1 */
+    } /* line 44 slow_hit_count: 0, fast_hit_count: 0 */
+  } /* line 45 slow_hit_count: 0, fast_hit_count: 0 */
+} /* line 46 slow_hit_count: 0, fast_hit_count: 0 */
+void speed_solve() { /* line 47 slow_hit_count: 1, fast_hit_count: 1 */
+  cin >> n >> q >> m; /* line 48 slow_hit_count: 1, fast_hit_count: 1 */
+  memset(rain, 0, sizeof(rain)); /* line 49 slow_hit_count: 1, fast_hit_count: 1 */
+  for (ll i = 0; i < q; i++) { /* line 50 slow_hit_count: 2, fast_hit_count: 2 */
+    ll l, r; /* line 51 slow_hit_count: 0, fast_hit_count: 0 */
+    cin >> l >> r; /* line 52 slow_hit_count: 1, fast_hit_count: 1 */
+    for (ll j = l; j < r; j++) { /* line 53 slow_hit_count: 2, fast_hit_count: 2 */
+      rain[j] = 1; /* line 54 slow_hit_count: 1, fast_hit_count: 1 */
+    } /* line 55 slow_hit_count: 0, fast_hit_count: 0 */
+  } /* line 56 slow_hit_count: 0, fast_hit_count: 0 */
+  for (ll i = 0; i < 2005; i++) { /* line 57 slow_hit_count: 2006, fast_hit_count: 2006 */
+    fatigue[i] = inf; /* line 58 slow_hit_count: 2005, fast_hit_count: 2005 */
+  } /* line 59 slow_hit_count: 0, fast_hit_count: 0 */
+  for (ll i = 0; i < m; i++) { /* line 60 slow_hit_count: 2, fast_hit_count: 2 */
+    ll x, p; /* line 61 slow_hit_count: 0, fast_hit_count: 0 */
+    cin >> x >> p; /* line 62 slow_hit_count: 1, fast_hit_count: 1 */
+    fatigue[x] = min(fatigue[x], p); /* line 63 slow_hit_count: 1, fast_hit_count: 1 */
+  } /* line 64 slow_hit_count: 0, fast_hit_count: 0 */
+  memset(dp, -1, sizeof(dp)); /* line 65 slow_hit_count: 1, fast_hit_count: 1 */
+  ll ans = rec(0, n + 1, 0); /* line 66 slow_hit_count: 1, fast_hit_count: 1 */
+  if (ans >= inf) { /* line 67 slow_hit_count: 1, fast_hit_count: 1 */
+    ans = -1; /* line 68 slow_hit_count: 1, fast_hit_count: 1 */
+  } /* line 69 slow_hit_count: 0, fast_hit_count: 0 */
+  cout << ans << "\n"; /* line 70 slow_hit_count: 1, fast_hit_count: 1 */
+} /* line 71 slow_hit_count: 1, fast_hit_count: 1 */
+int main() { /* line 72 slow_hit_count: 1, fast_hit_count: 1 */
+  ios_base::sync_with_stdio(false); /* line 73 slow_hit_count: 1, fast_hit_count: 1 */
+  cin.tie(0); /* line 74 slow_hit_count: 1, fast_hit_count: 1 */
+  cout.tie(0); /* line 75 slow_hit_count: 1, fast_hit_count: 1 */
+  ll test_cases = 1; /* line 76 slow_hit_count: 1, fast_hit_count: 1 */
+  for (ll i = 0; i < test_cases; i++) { /* line 77 slow_hit_count: 2, fast_hit_count: 2 */
+    speed_solve(); /* line 78 slow_hit_count: 1, fast_hit_count: 1 */
+  } /* line 79 slow_hit_count: 0, fast_hit_count: 0 */
+  return 0; /* line 80 slow_hit_count: 1, fast_hit_count: 1 */
+} /* line 81 slow_hit_count: 0, fast_hit_count: 0 */
+
+
+assistant: ### Phase 1: Identify Expensive or Inefficient Code Segments
+
+Upon analyzing the provided code and hit count data, the primary bottleneck seems to be the `rec` function. Below are the key observations:
+
+1. **High Recursion Calls**: The function `rec` is being called excessively in the slow input case:
+   - The line `if (dp[i][j][f] != -1)` is hit over 6 million times for the slow input compared to about 1.87 million times for the fast input, indicating a high frequency of recursive calls.
+   - This suggests that the dynamic programming (DP) memoization table (`dp`) is hit a vast number of times, pointing to a large state space being explored.
+
+2. **DP Table Misses**: The line `return dp[i][j][f]` corresponding to a cache hit (line 27) is being executed nearly 4 million times with the slow input, indicating many recursive returns without further exploration, but still a significant number of calls hit the cache.
+
+3. **Branching Factor**: The recursive function involves a decision point based on whether `rain[i]` is true or false, affecting whether Polycarp carries an umbrella (`f` flag). This branching seems to create a large state space to explore.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on the analysis, the following are natural language performance invariants that describe conditions under which the code slows down:
+
+1. **State Space Explosion**:
+   - **Invariant**: "When the length of the journey `a` is large and there is a high number of potential umbrella configurations due to closely spaced rain segments, the state space for the recursive DP solution becomes vast, leading to excessive recursive exploration."
+   - **Explanation**: This happens because the recursive solution explores many potential paths Polycarp can take, each with different umbrella usage configurations, which is exacerbated with longer journeys and more rain segments.
+
+2. **Recursion Depth and Branching**:
+   - **Invariant**: "If the recursive depth becomes too large due to long non-rainy segments or large distances between umbrella points and rain starts, the number of recursive calls increases, impacting performance."
+   - **Explanation**: The recursion branches deeply when Polycarp has multiple options for picking up or dropping umbrellas, particularly when moving over long distances without rain.
+
+3. **Umbrella Weight Configuration**:
+   - **Invariant**: "When the points where Polycarp can pick or drop umbrellas are numerous or overlap with rainy segment starts, the dynamic programming table state combinations become complex, leading to performance degradation."
+   - **Explanation**: This occurs due to the need to calculate the minimum fatigue across multiple umbrella pick/drop configurations, which increases combinatorial state space in the DP table.
+
+4. **Sparse Memoization Effectiveness**:
+   - **Invariant**: "If the memoization cache hits are low relative to the number of recursive calls due to varying umbrella states and rain conditions, the performance will degrade."
+   - **Explanation**: When the DP table does not capture enough recurring states due to variation in rain and umbrella positions, excessive recomputation can slow down the algorithm.
+
+These invariants abstract away from specific values and instead focus on the interaction between input characteristics (length of journey, rain segments, umbrella configurations) and the resulting computational complexity and recursion depth.
+
+user: (A) Context
+
+You have already:
+1. Identified expensive code segments (Phase 1).
+2. Derived performance-characterizing invariants in natural language (Phase 2).
+
+Now, you MUST transform these invariants into runtime checks and integrate them into the given C++ program.
+
+(B) Tasks: Revisit the performance-characteristic invariants you inferred in natural langauge and write faithful, error-free C++ code snippets to implement them
+
+You MUST do perform this task in two phases and provide separate answers for both: First, translating the invariants into checker code in C++ (phase 3, below). Second, integrating those checker C++ code snippets with the original program for which you inferred those invariants (phase 4, below).   
+
+Phase 3: Implement the natural language invariants inferred previously, in C++. In this phase you are asked to, 
+1. For each natural language invariant from Phase 2, you MUST produce C++ code that checks the condition at runtime.
+2. You MUST NOT relax or trivialize the checker code implementing these performance-characterizing invariants. You MUST faithfully implement them as described. 
+3. Use the following template for writing checker code in C++ which could also be implemented as a helper function:
+```cpp
+    if (/* condition based on the NL invariant */) {
+        cerr << "Warning: Performance bottleneck condition triggered!" << endl;
+        abort();
+    }
+``` 
+
+Note that not all performance-characterizing invariants are about maximising input size. You may refer to the following examples for inspiration --- some maximising the input size, some not --- but do not simply replicate them exactly. Rather, use them as inspiration to infer and tailor performance-characterizing invariants tailored for the C++ code and problem statement you were asked to analize:
+
+Example Invariant #1:
+
+A potential slowdown arises when certain arrays or lists grow large, causing repeated operations. One way to detect this is to check if the size of a critical array arr (used in a nested loop) exceeds a broad threshold.
+
+Natural language description: “If arr is very large and used in nested loops, the code may repeat operations too many times.”
+
+Code implementing the natural language description:
+
+```cpp
+// Sample checker function
+void check_size_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: size_invariant triggered - array too large for nested loops" << endl;
+        abort();
+    }
+}
+
+// Usage in main or function
+int arrSize = arr.size();
+check_size_invariant(arrSize > 50000);
+```
+
+Example Invariant #2:
+
+Repeated sorting or searching on a data structure can degrade performance, especially if the data structure is large or if the sorting is called multiple times in a loop.
+
+Natural language description: “If a large portion of the code’s execution time is spent in sorting a data structure repeatedly, performance may degrade. Check if the data structure is frequently resorted or reprocessed when it has many elements.”
+
+Code implementing the natural language description:
+
+```cpp
+void check_sort_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: sort_invariant triggered - repeatedly sorting large data" << endl;
+        abort();
+    }
+}
+
+// After reading input or before sorting
+int elementCount = someDataStructure.size();
+check_sort_invariant(elementCount > 100000 && /* some condition indicating repeated sorts */);
+```
+
+Example Invariant #3:
+
+Recursion (e.g., graph traversal or the iterative version of it, recurssive dynamic programming, recurssive computation like computing the next Fibonacci number, etc.) can become expensive if it explores a large search space. A sign of this might be a high branching factor combined with a deep recursion depth.
+
+Natural language description: “If the recursion depth is likely to exceed a certain level or if many branches are processed at each recursive call, the computation may become very expensive.”
+
+```cpp
+void check_dfs_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: dfs_invariant triggered - high recursion depth or branching factor" << endl;
+        abort();
+    }
+}
+
+// Before calling dfs or inside setup
+check_dfs_invariant((maxDepthEstimate > 50) && (branchFactorEstimate > 10));
+```
+
+Example Invariant #4:
+
+Memory usage spikes or large matrix operations can slow down computation if array dimensions become too large. If the program initializes a 2D array based on input dimensions n and m, certain input combinations can trigger large memory footprints or nested loops over the entire matrix.
+
+Natural language description: “If n and m together exceed a threshold that implies large matrix computations, the program may slow significantly.”
+
+```cpp
+void check_matrix_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: matrix_invariant triggered - potentially large matrix operations" << endl;
+        abort();
+    }
+}
+
+// After reading n, m
+check_matrix_invariant(n * m > 1000000);
+```
+
+Example invariant #5:
+
+If a program runs an expensive function or heavy-weight code (e.g. memory allocation) repeatedly within a performance-critical loop or function, the overhead for calling that function can accumulate, slowing the program significantly.
+
+Natural langauge description: "If function foo is an expensive function to execute, and is called a large number of times in a loop or recursive function, the program may slow down significantly"
+
+```cpp
+void check_expensive_function_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: expensive function invariant triggered - excessive calls" << endl;
+        abort();
+    }
+}
+
+check_expensive_function_invariant(n > 1000000);  // arbitrary, but large threshold
+for (i = 0; i < n; ++i) { 
+    foo(); // expensive function
+}
+```
+
+
+Phase 4: Propagate and insert conditional checks. In this phase you are asked to,
+1. Place each check at an effective point in the control/data flow (e.g., after reading inputs, before heavy loops) so you do not add overhead in tight loops. Note that the checker code could also be implemented as a helper function.
+2. If multiple checks overlap, merge or adjust them carefully to avoid redundant warnings.
+3. Provide the final, instrumented C++ code in code fences. Ensure it compiles cleanly and runs without errors.
+4. For each inserted check, add a short comment explaining which bottleneck it detects.
+
+Note the following important considerations when translating the inferred performance-characterizing invariants into code and propagating the checkers to the most efective program point by instrumenting the original code: 
+1. Avoid hardcoding. Don’t rely solely on the exact values from the provided slow input; think in terms of categories or thresholds that lead to slow execution.
+2. In addition to the warning message, remember to insert an "abort()" statement at the end of the checker.
+3. Focus on fuzzer utility. The checks should help a fuzzer detect slow performance triggers by hitting these conditions.
+
+As a refresher, below you are provided with the same program statement and C++ code for which you already inferred performance-characterizing invariants:
+
+Problem statement:
+Polycarp lives on a coordinate line at the point x = 0. He goes to his friend that lives at the point x = a. Polycarp can move only from left to right, he can pass one unit of length each second.
+
+Now it's raining, so some segments of his way are in the rain. Formally, it's raining on n non-intersecting segments, the i-th segment which is in the rain is represented as [l_i, r_i] (0 ≤ l_i < r_i ≤ a).
+
+There are m umbrellas lying on the line, the i-th umbrella is located at point x_i (0 ≤ x_i ≤ a) and has weight p_i. When Polycarp begins his journey, he doesn't have any umbrellas.
+
+During his journey from x = 0 to x = a Polycarp can pick up and throw away umbrellas. Polycarp picks up and throws down any umbrella instantly. He can carry any number of umbrellas at any moment of time. Because Polycarp doesn't want to get wet, he must carry at least one umbrella while he moves from x to x + 1 if a segment [x, x + 1] is in the rain (i.e. if there exists some i such that l_i ≤ x and x + 1 ≤ r_i).
+
+The condition above is the only requirement. For example, it is possible to go without any umbrellas to a point where some rain segment starts, pick up an umbrella at this point and move along with an umbrella. Polycarp can swap umbrellas while he is in the rain.
+
+Each unit of length passed increases Polycarp's fatigue by the sum of the weights of umbrellas he carries while moving.
+
+Can Polycarp make his way from point x = 0 to point x = a? If yes, find the minimum total fatigue after reaching x = a, if Polycarp picks up and throws away umbrellas optimally.
+
+Input
+
+The first line contains three integers a, n and m (1 ≤ a, m ≤ 2000, 1 ≤ n ≤ ⌈a/2⌉) — the point at which Polycarp's friend lives, the number of the segments in the rain and the number of umbrellas.
+
+Each of the next n lines contains two integers l_i and r_i (0 ≤ l_i < r_i ≤ a) — the borders of the i-th segment under rain. It is guaranteed that there is no pair of intersecting segments. In other words, for each pair of segments i and j either r_i < l_j or r_j < l_i.
+
+Each of the next m lines contains two integers x_i and p_i (0 ≤ x_i ≤ a, 1 ≤ p_i ≤ 10^5) — the location and the weight of the i-th umbrella.
+
+Output
+
+Print "-1" (without quotes) if Polycarp can't make his way from point x = 0 to point x = a. Otherwise print one integer — the minimum total fatigue after reaching x = a, if Polycarp picks up and throws away umbrellas optimally.
+
+Examples
+
+Input
+
+10 2 4
+3 7
+8 10
+0 10
+3 4
+8 1
+1 2
+
+
+Output
+
+14
+
+
+Input
+
+10 1 1
+0 9
+0 5
+
+
+Output
+
+45
+
+
+Input
+
+10 1 1
+0 9
+1 5
+
+
+Output
+
+-1
+
+Note
+
+In the first example the only possible strategy is to take the fourth umbrella at the point x = 1, keep it till the point x = 7 (the total fatigue at x = 7 will be equal to 12), throw it away, move on from x = 7 to x = 8 without an umbrella, take the third umbrella at x = 8 and keep it till the end (the total fatigue at x = 10 will be equal to 14). 
+
+In the second example the only possible strategy is to take the first umbrella, move with it till the point x = 9, throw it away and proceed without an umbrella till the end.
+
+Solution (C++ code):
+{solution}
+
+
+assistant: ### Phase 3: Implement the Natural Language Invariants in C++
+
+Below are the C++ code snippets that correspond to the performance-characterizing invariants described earlier. These snippets serve as runtime checks:
+
+1. **State Space Explosion**
+   - This check ensures that excessive combinations of rain segments and umbrellas are not explored. A heuristic threshold is used based on problem constraints.
+
+```cpp
+void check_state_space_explosion(int a, int n, int m) {
+    if (a > 1500 && m > 100) { // Heuristic threshold for explosion
+        cerr << "Warning: Performance bottleneck condition triggered - State space explosion!" << endl;
+        abort();
+    }
+}
+```
+
+2. **Recursion Depth and Branching**
+   - This check ensures that the recursion depth does not exceed a certain level, which might occur due to certain input configurations.
+
+```cpp
+void check_recursion_depth(int maxDepth) {
+    if (maxDepth > 50) { // Threshold chosen for recursion depth
+        cerr << "Warning: Performance bottleneck condition triggered - Recursion depth too large!" << endl;
+        abort();
+    }
+}
+```
+
+3. **Umbrella Weight Configuration**
+   - This check ensures that the number of different umbrella configurations does not lead to excessive state space.
+
+```cpp
+void check_umbrella_configurations(int m) {
+    if (m > 100) { // Threshold for umbrella configurations
+        cerr << "Warning: Performance bottleneck condition triggered - Too many umbrella configurations!" << endl;
+        abort();
+    }
+}
+```
+
+4. **Sparse Memoization Effectiveness**
+   - This check ensures that the memoization table is effectively reducing the number of recursive calls.
+
+```cpp
+void check_effective_memoization(int cacheHits, int recursiveCalls) {
+    if (cacheHits < recursiveCalls / 2) { // Check if memoization is effective
+        cerr << "Warning: Performance bottleneck condition triggered - Ineffective memoization!" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrate Checkers into the Original Program
+
+Here is the instrumented C++ code that integrates the checker functions into the original program:
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+using ll = long long;
+
+const ll inf = 1e10;
+
+ll n, m, q;
+ll rain[2005], fatigue[2005], dp[2005][2005][2];
+
+// Checkers for performance bottlenecks
+void check_state_space_explosion(int a, int n, int m) {
+    if (a > 1500 && m > 100) { // Heuristic threshold for explosion
+        cerr << "Warning: Performance bottleneck condition triggered - State space explosion!" << endl;
+        abort();
+    }
+}
+
+void check_recursion_depth(int maxDepth) {
+    if (maxDepth > 50) {
+        cerr << "Warning: Performance bottleneck condition triggered - Recursion depth too large!" << endl;
+        abort();
+    }
+}
+
+void check_umbrella_configurations(int m) {
+    if (m > 100) {
+        cerr << "Warning: Performance bottleneck condition triggered - Too many umbrella configurations!" << endl;
+        abort();
+    }
+}
+
+void check_effective_memoization(int cacheHits, int recursiveCalls) {
+    if (cacheHits < recursiveCalls / 2) {
+        cerr << "Warning: Performance bottleneck condition triggered - Ineffective memoization!" << endl;
+        abort();
+    }
+}
+
+ll rec(ll i, ll j, ll f) {
+    static int recursiveCalls = 0;
+    static int cacheHits = 0;
+    recursiveCalls++;
+
+    if (i > n) {
+        return 0;
+    }
+    if (dp[i][j][f] != -1) {
+        cacheHits++;
+        return dp[i][j][f];
+    }
+    if (f) {
+        if (!rain[i]) {
+            return dp[i][j][f] =
+                min(rec(i + 1, j, 1) + fatigue[j],
+                    min(rec(i + 1, i, 1) + fatigue[i], rec(i + 1, n + 1, 0)));
+        } else {
+            return dp[i][j][f] = min(rec(i + 1, j, 1) + fatigue[j],
+                                     rec(i + 1, i, 1) + fatigue[i]);
+        }
+    } else {
+        if (!rain[i]) {
+            return dp[i][j][f] =
+                min(rec(i + 1, i, 1) + fatigue[i], rec(i + 1, n + 1, 0));
+        } else {
+            return dp[i][j][f] = rec(i + 1, i, 1) + fatigue[i];
+        }
+    }
+}
+
+void speed_solve() {
+    int a;
+    cin >> a >> q >> m;
+
+    // Insert checker functions with initial parameters
+    check_state_space_explosion(a, q, m);
+    check_umbrella_configurations(m);
+
+    memset(rain, 0, sizeof(rain));
+    for (ll i = 0; i < q; i++) {
+        ll l, r;
+        cin >> l >> r;
+        for (ll j = l; j < r; j++) {
+            rain[j] = 1;
+        }
+    }
+    for (ll i = 0; i < 2005; i++) {
+        fatigue[i] = inf;
+    }
+    for (ll i = 0; i < m; i++) {
+        ll x, p;
+        cin >> x >> p;
+        fatigue[x] = min(fatigue[x], p);
+    }
+    memset(dp, -1, sizeof(dp));
+    ll ans = rec(0, n + 1, 0);
+
+    // Check for memoization effectiveness after recursion
+    check_effective_memoization(cacheHits, recursiveCalls);
+
+    if (ans >= inf) {
+        ans = -1;
+    }
+    cout << ans << "\n";
+}
+
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(0);
+    cout.tie(0);
+    speed_solve();
+    return 0;
+}
+```
+
+**Comments**:
+- The checker functions are called at strategic points in the program to ensure that they do not incur overhead during tight loops.
+- The code checks at the beginning of `speed_solve` validate the configuration before any complex computation.
+- The memoization check is done after the recursive process to evaluate its effectiveness.
+

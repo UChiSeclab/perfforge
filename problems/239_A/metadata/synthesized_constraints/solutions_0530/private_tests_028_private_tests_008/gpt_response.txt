@@ -1,0 +1,131 @@
+=== Invariants Response ===
+To analyze the given C code and identify the performance bottlenecks, let's go through the steps:
+
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+1. **Compare Line-Level Hit Counts**:
+   - **Line 10 (`while (k * i <= n)`)**: This loop is executed 100,001 times for the slow input and only 2 times for the fast input.
+   - **Line 11 (`if (y == n)`)**: This check is performed 100,000 times for the slow input and once for the fast input.
+   - **Line 13 (`else if (k * i > y)`)**: This condition is checked 100,000 times for the slow input and once for the fast input.
+   - **Line 17 (`i++`)**: The increment operation is executed 100,000 times for the slow input and once for the fast input.
+
+2. **Inference**:
+   - The main performance bottleneck is the loop starting at line 10. The loop iterates from `i = 1` to a point where `k * i > n`, incrementing `i` and performing several checks.
+   - For the slow input, the value of `n` is significantly larger than `k`, leading to a high number of iterations.
+   - The conditional checks within the loop (lines 11 and 13) do not significantly reduce the number of iterations, especially when `y` is significantly larger than `k`.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on the above analysis, we can generate natural language statements that describe the conditions leading to the slow path:
+
+1. **Invariant 1: Large Difference Between `n` and `k`**:
+   - "If the value of `n` is significantly larger than `k`, the loop in the program runs many times, leading to slow performance."
+   - **Explanation**: When `n` is much larger than `k`, the loop iterates extensively, causing a slowdown.
+
+2. **Invariant 2: Inefficient Loop When `y` is Small**:
+   - "If `y` is small compared to `n` and `k`, the loop iterates many times without printing any valid results, as most `k * i` values are greater than `y`."
+   - **Explanation**: A smaller `y` means the condition `k * i > y` becomes true more often, but without reaching the printing condition quickly.
+
+3. **Invariant 3: Loop Iterations Reaching Upper Bound**:
+   - "If `k` divides `n` but does not divide a substantial part of the range before `y`, the loop performs many unnecessary checks."
+   - **Explanation**: If `k` divides `n` perfectly, but it skips many potential `x` values less than or equal to `y`, the loop iterates without finding valid results.
+
+These invariants capture the scenarios where the loop performs excessively many iterations due to the relationships between `n`, `k`, and `y`. They help in understanding when the loop becomes a performance bottleneck by focusing on the structural conditions of the input.
+
+=== Checker Response ===
+### Phase 3: Implement the Natural Language Invariants in C++
+
+Based on the natural language invariants derived earlier, here are the C++ code snippets to check each condition at runtime:
+
+1. **Invariant 1: Large Difference Between `n` and `k`**
+   ```cpp
+   void check_large_difference_invariant(long long k, long long n) {
+       if (n > 100 * k) { // Assuming a threshold of 100 times larger
+           cerr << "Warning: Performance bottleneck condition triggered due to large n compared to k!" << endl;
+           abort();
+       }
+   }
+   ```
+
+2. **Invariant 2: Inefficient Loop When `y` is Small**
+   ```cpp
+   void check_small_y_invariant(long long y, long long n, long long k) {
+       if (y < k && n > y) { // Small y compared to n and k
+           cerr << "Warning: Performance bottleneck condition triggered due to small y!" << endl;
+           abort();
+       }
+   }
+   ```
+
+3. **Invariant 3: Loop Iterations Reaching Upper Bound**
+   ```cpp
+   void check_k_divides_n_invariant(long long n, long long k, long long y) {
+       if ((n % k == 0) && (y < n / 2)) { // Checks if k divides n and y is relatively small
+           cerr << "Warning: Performance bottleneck condition triggered due to k dividing n perfectly!" << endl;
+           abort();
+       }
+   }
+   ```
+
+### Phase 4: Instrument the Original Program with Checkers
+
+Now, integrate these checks into the existing C++ program:
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+// Checker functions
+void check_large_difference_invariant(long long k, long long n) {
+    if (n > 100 * k) { // Assuming a threshold of 100 times larger
+        cerr << "Warning: Performance bottleneck condition triggered due to large n compared to k!" << endl;
+        abort();
+    }
+}
+
+void check_small_y_invariant(long long y, long long n, long long k) {
+    if (y < k && n > y) { // Small y compared to n and k
+        cerr << "Warning: Performance bottleneck condition triggered due to small y!" << endl;
+        abort();
+    }
+}
+
+void check_k_divides_n_invariant(long long n, long long k, long long y) {
+    if ((n % k == 0) && (y < n / 2)) { // Checks if k divides n and y is relatively small
+        cerr << "Warning: Performance bottleneck condition triggered due to k dividing n perfectly!" << endl;
+        abort();
+    }
+}
+
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(NULL);
+
+    long long y, k, n;
+    cin >> y >> k >> n;
+
+    // Run the performance checks
+    check_large_difference_invariant(k, n);
+    check_small_y_invariant(y, n, k);
+    check_k_divides_n_invariant(n, k, y);
+
+    bool flag = true;
+    long long i = 1;
+    while (k * i <= n) {
+        if (y == n)
+            break;
+        else if (k * i > y) {
+            cout << k * i - y << " ";
+            flag = false;
+        }
+        i++;
+    }
+    if (flag) cout << -1;
+}
+```
+
+### Explanation
+
+- **Placement of Checks**: The checks are placed after reading the input values and before the main loop to ensure no unnecessary overhead is added by placing them within the loop.
+- **Flexibility**: The checks use estimated thresholds based on the problem description to help identify conditions where performance might degrade, aiming for a balance between catching potential issues and avoiding false positives.
+- **Usefulness for Fuzzers**: These conditions can help a fuzzer trigger slow performance paths, potentially identifying further areas for optimization.

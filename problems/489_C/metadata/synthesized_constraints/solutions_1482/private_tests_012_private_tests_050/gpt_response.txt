@@ -1,0 +1,218 @@
+=== Invariants Response ===
+To diagnose the performance bottleneck in the given C program, we have to analyze the differences in hit counts between the fast and slow inputs, and then derive conditions or invariants that characterize the performance.
+
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+Upon reviewing the hit counts:
+
+1. **High Iteration Loops:**
+   - The `for` loop at line 60, which runs a very high number of times (`10,000,000` iterations), is a major contributor to the slowdown. It checks and potentially modifies elements of the `digitsMin` vector.
+   - The `while` loop starting at line 40 executes a considerable number of times (13 iterations), particularly when `sum` is initially high and greater than 9.
+
+2. **Loop with High Condition Check Frequency:**
+   - The loop at line 54 iterates 89 times, filling zeros into `digitsMax` when `m` is significantly reduced after the first while loop.
+
+3. **Conditional Logic:**
+   - The conditional checks at line 61 and 65 within the loop starting at line 60 are frequent and likely inefficient when `sum` approaches lower values but is still large.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on the analysis:
+
+1. **Large Sum with Maximum Digits:**
+   - When both `m` (the number of digits) and `s` (sum of digits) are near their maximum (e.g., `m = 100` and `s = 100`), the program spends more time in iterative loops, especially when attempting to find the minimal number configuration.
+
+   **Natural Language Invariant:**
+   - "If both the number of digits `m` and the sum of the digits `s` are near their maximum constraints, the program may slow down significantly due to extensive loop iterations aimed at constructing feasible digit sequences."
+
+2. **High Iteration Count in Search Loops:**
+   - The loop that attempts to compute the minimum number by exhaustive checks (line 60) becomes a performance bottleneck when `s` is large relative to `m`, as each digit potential combination is evaluated iteratively.
+
+   **Natural Language Invariant:**
+   - "When the sum `s` is large relative to the number of digits `m`, the program may enter a slow path due to high iteration counts in loops that attempt to balance the digit sum across multiple positions."
+
+3. **When Zero Filling is Required:**
+   - Adding many zeros to the `digitsMax` vector becomes costly if `m` is large, but the sum `s` has already been mostly allocated to higher valued digits.
+
+   **Natural Language Invariant:**
+   - "If a substantial portion of the digits must be filled with zeros after satisfying the sum condition, the zero-filling process may degrade performance, particularly when `m` remains large after initial high-value digit allocation."
+
+These invariants abstractly capture the conditions leading to the slowdown and can guide future optimizations or testing scenarios by ensuring configurations that hit such slow paths are identified and managed.
+
+=== Checker Response ===
+### Phase 3: Implement Checker Code in C++
+
+Based on the performance-characterizing invariants identified previously, here are the translated runtime checks in C++:
+
+#### Invariant 1: Large Sum with Maximum Digits
+
+```cpp
+void check_large_sum_and_digits(int m, int s) {
+    if (m == 100 && s >= 90) {  // Adjust threshold based on constraints
+        cerr << "Warning: Performance bottleneck condition triggered - large sum with maximum digits" << endl;
+        abort();
+    }
+}
+```
+
+#### Invariant 2: High Iteration Count in Search Loops
+
+```cpp
+void check_high_iteration_count(int m, int s) {
+    if (s > 9 * (m - 9)) {  // When sum is disproportionately large
+        cerr << "Warning: Performance bottleneck condition triggered - high iteration count due to large sum" << endl;
+        abort();
+    }
+}
+```
+
+#### Invariant 3: Zero Filling
+
+```cpp
+void check_excessive_zero_filling(int m, int storeSum) {
+    if (m > 10 && storeSum < 10) {  // Heuristic to catch excessive zero filling
+        cerr << "Warning: Performance bottleneck condition triggered - excessive zero filling" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrate Checkers into the Original Program
+
+Now, incorporate these checks into the original C++ program at optimal locations:
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+// Checker function definitions
+void check_large_sum_and_digits(int m, int s) {
+    if (m == 100 && s >= 90) {
+        cerr << "Warning: Performance bottleneck condition triggered - large sum with maximum digits" << endl;
+        abort();
+    }
+}
+
+void check_high_iteration_count(int m, int s) {
+    if (s > 9 * (m - 9)) {
+        cerr << "Warning: Performance bottleneck condition triggered - high iteration count due to large sum" << endl;
+        abort();
+    }
+}
+
+void check_excessive_zero_filling(int m, int storeSum) {
+    if (m > 10 && storeSum < 10) {
+        cerr << "Warning: Performance bottleneck condition triggered - excessive zero filling" << endl;
+        abort();
+    }
+}
+
+int32_t main() {
+    int m, sum;
+    cin >> m >> sum;
+
+    // Check for large sum with maximum digits
+    check_large_sum_and_digits(m, sum);
+
+    vector<int> digitsMax;
+    vector<int> digitsMin;
+
+    if ((sum > 9 && m == 1) || (sum == 0 && m > 1)) {
+        cout << -1 << " " << -1 << endl;
+        return 0;
+    } else if (sum == 0 && m == 1) {
+        cout << 0 << " " << 0 << endl;
+        return 0;
+    } else if (sum <= 9 && m == 1) {
+        cout << sum << " " << sum << endl;
+        return 0;
+    } else if (sum <= 9 && m > 1) {
+        digitsMax.push_back(sum);
+        for (int i = 0; i < m - 1; i++) {
+            digitsMax.push_back(0);
+        }
+        digitsMin.push_back(1);
+        for (int i = 0; i < m - 2; i++) {
+            digitsMin.push_back(0);
+        }
+        digitsMin.push_back(sum - 1);
+        for (int i = 0; i < digitsMin.size(); i++) {
+            cout << digitsMin[i];
+        }
+        cout << " ";
+        for (int i = 0; i < digitsMax.size(); i++) {
+            cout << digitsMax[i];
+        }
+        return 0;
+    } else if (sum > 9 && m >= 1) {
+        int storeSum = sum;
+        int storeSize = m;
+        int storeSecond = m;
+        int sumSecond = sum;
+
+        // Check excessive zero filling scenario
+        check_excessive_zero_filling(m, storeSum);
+
+        while (storeSum > 0) {
+            if (storeSum > 9) {
+                digitsMax.push_back(9);
+                storeSum -= 9;
+            } else {
+                digitsMax.push_back(storeSum);
+                storeSum = 0;
+            }
+            m -= 1;
+            if (m == 0 && storeSum > 0) {
+                cout << -1 << " " << -1 << endl;
+                return 0;
+            }
+        }
+        while (m > 0) {
+            digitsMax.push_back(0);
+            m--;
+        }
+        m = storeSecond;
+        sum = sumSecond;
+
+        // Check for high iteration count in search loop
+        check_high_iteration_count(m, sum);
+
+        for (int i = 0; i < 10000000; i++) {
+            if (sum > 9) {
+                digitsMin.push_back(9);
+                sum -= 9;
+                m--;
+            } else if (sum > 1 && m > 1) {
+                digitsMin.push_back(sum - 1);
+                sum = sum - (sum - 1);
+                m--;
+            }
+            if (m == 0 || m == 1) break;
+        }
+        while (m - 1 > 0) {
+            digitsMin.push_back(0);
+            m--;
+        }
+        digitsMin.push_back(sum);
+        reverse(digitsMin.begin(), digitsMin.end());
+        for (int i = 0; i < digitsMin.size(); i++) {
+            cout << digitsMin[i];
+        }
+        cout << " ";
+        for (int i = 0; i < digitsMax.size(); i++) {
+            cout << digitsMax[i];
+        }
+        return 0;
+    } else {
+        cout << -1 << " " << -1 << endl;
+        return 0;
+    }
+}
+```
+
+### Explanation
+- **Check for Large Sum with Maximum Digits:** Added after input, before any significant processing, to catch problematic inputs early.
+- **Check for High Iteration Count in Search Loops:** Placed before loops that may iterate excessively based on the sum and digit count relationship.
+- **Check for Excessive Zero Filling:** Before filling zeros in `digitsMax`, to avoid unnecessary operations.
+
+These checks will help identify performance issues during runtime and allow further analysis or optimization.

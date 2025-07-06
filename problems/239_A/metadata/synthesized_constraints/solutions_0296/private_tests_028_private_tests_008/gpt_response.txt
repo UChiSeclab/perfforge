@@ -1,0 +1,139 @@
+=== Invariants Response ===
+To diagnose the performance bottlenecks in the given C program and derive performance-characterizing invariants, we will analyze the hit count information and the problem constraints.
+
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+1. **Line Analysis**:
+   - The critical line is the loop starting at line 10: `for (long long i = 1; i < 100001ll; i++)`. This loop iterates 100,000 times in the slow input case compared to just twice in the fast input case.
+   - Within this loop, the condition checks and operations on lines 11-14 are executed 100,000 times for the slow input. These lines are:
+     - `s = i * k;` — Calculation of a multiple of `k`.
+     - Condition check `if (s > n) break;` — To stop if `s` exceeds `n`.
+     - The core logic on lines 13-14: `if (s <= y) continue;` — This check causes the loop to skip further processing, leading to the slow path being triggered.
+
+2. **Reason for Slowdown**:
+   - The loop is iterating over a large fixed range (1 to 100,000). For each iteration, it performs checks and potentially skips iterations with the `continue` statement.
+   - The number of iterations where the loop skips processing due to `s <= y` is large in the slow input case. As `y` is large in the slow input, this condition is satisfied frequently, causing the loop to continue without adding elements to the vector `ans`.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+1. **Invariant on Loop Iterations**:
+   - **Natural Language Description**: "When `y` is large relative to `n`, the loop may iterate many times with minimal useful work done, causing a slowdown. Specifically, when `y` is close to `n` but `n` is not divisible by `k`, the condition `s <= y` results in many skipped iterations."
+   - **Abstract Condition**: If `y` is more than half of `n` and `n % k` is small, the program is likely to perform excessive iterations without adding to results.
+
+2. **Invariant on Input Constraints**:
+   - **Natural Language Description**: "The performance degrades when `k` is small relative to `n`, leading to more iterations due to increased possible values for `s` that do not satisfy `s <= y`."
+   - **Abstract Condition**: When `k` is much less than `n`, but `k` and `n` are such that many multiples of `k` are less than `n` and greater than `y`, the loop runs many iterations.
+
+3. **Invariant on Unproductive Iterations**:
+   - **Natural Language Description**: "If the loop iterates over a large range, checking conditions without fulfilling them due to `s <= y`, the execution is inefficient. This often occurs when `y` nearly equals `n` and `n` is slightly larger than a multiple of `k`."
+   - **Abstract Condition**: When `y` is close to `n`, and many of `i * k` values fall under `y`, leading to many iterations without useful computation.
+
+These invariants describe conditions under which the performance of the algorithm degrades, focusing on the relationship between `y`, `k`, and `n`, and their effects on loop iterations. Such conditions are crucial to detect and prevent potential slowdowns in similar scenarios.
+
+=== Checker Response ===
+Let's translate the performance-characterizing invariants into checker code in C++ and integrate them into the given program. We'll handle this in two phases: implementing the invariant checkers and then integrating these into the original C++ program.
+
+### Phase 3: Implementing Checkers in C++
+
+Based on the performance-characterizing invariants derived earlier, here is how you can implement them in C++:
+
+```cpp
+#include <iostream>
+#include <cstdlib>
+
+using namespace std;
+
+// Check if y is too close to n causing inefficient iterations
+void check_y_n_invariant(long long y, long long n) {
+    if (y > n / 2) {
+        cerr << "Warning: Performance bottleneck condition triggered - y is too large compared to n!" << endl;
+        abort();
+    }
+}
+
+// Check if k is too small compared to n leading to more iterations
+void check_k_n_invariant(long long k, long long n) {
+    if (k < n / 1000) {
+        cerr << "Warning: Performance bottleneck condition triggered - k is too small compared to n!" << endl;
+        abort();
+    }
+}
+
+// Check if there are many skipped iterations due to s <= y
+void check_skipped_iterations(long long y, long long n, long long k) {
+    if (y > n && n % k != 0) {
+        cerr << "Warning: Performance bottleneck condition triggered - many iterations skipped due to s <= y!" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrating Checkers into the Program
+
+Now, let's integrate these checkers into the original C++ program. We will place the checks after reading inputs and before entering the critical loop, as this will help detect performance issues without adding overhead to the loop itself.
+
+```cpp
+#include <iostream>
+#include <vector>
+#include <cstdlib>
+
+using namespace std;
+
+// Invariant checkers as implemented above
+void check_y_n_invariant(long long y, long long n) {
+    if (y > n / 2) {
+        cerr << "Warning: Performance bottleneck condition triggered - y is too large compared to n!" << endl;
+        abort();
+    }
+}
+
+void check_k_n_invariant(long long k, long long n) {
+    if (k < n / 1000) {
+        cerr << "Warning: Performance bottleneck condition triggered - k is too small compared to n!" << endl;
+        abort();
+    }
+}
+
+void check_skipped_iterations(long long y, long long n, long long k) {
+    if (y > n && n % k != 0) {
+        cerr << "Warning: Performance bottleneck condition triggered - many iterations skipped due to s <= y!" << endl;
+        abort();
+    }
+}
+
+int main() {
+    long long y, k, n;
+    scanf("%I64d", &y);
+    scanf("%I64d", &k);
+    scanf("%I64d", &n);
+
+    // Check for potential performance bottlenecks
+    check_y_n_invariant(y, n);
+    check_k_n_invariant(k, n);
+    check_skipped_iterations(y, n, k);
+
+    long long s;
+    vector<int> ans;
+    for (long long i = 1; i < 100001ll; i++) {
+        s = i * k;
+        if (s > n) break;
+        if (s <= y)
+            continue;
+        else {
+            ans.push_back((int)(s - y));
+        }
+    }
+    if (ans.size() == 0)
+        cout << -1;
+    else {
+        for (int i = 0; i < ans.size(); i++) cout << ans[i] << " ";
+    }
+    return 0;
+}
+```
+
+### Explanation
+
+- **Check Placement**: The checks for potential performance bottlenecks are placed after reading the inputs. This ensures that they are verified before any heavy computation starts.
+- **Conditions**: The checks are designed to catch scenarios where the program's performance might degrade, such as when `y` is large relative to `n`, `k` is too small, or many iterations are skipped due to the condition `s <= y`.
+- **Abort on Detection**: If any condition indicative of a performance issue is detected, the program outputs a warning message and aborts execution. This helps in debugging and optimizing the program to prevent potential slowdowns in future runs.

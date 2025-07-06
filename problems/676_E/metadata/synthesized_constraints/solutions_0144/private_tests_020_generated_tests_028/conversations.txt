@@ -1,0 +1,865 @@
+system: You are a helpful assistant good at coding.
+
+user: (A) Context
+
+You are an experienced C software engineer focusing on performance bottlenecks. You have:
+1. A problem statement describing a task or algorithm (with constraints such as n <= 100).
+2. A C program that implements a solution to that problem.
+3. Two inputs: a “fast” input that completes quickly, and a “slow” input that takes much longer—both inputs have similar size/structure.
+4. Line-level hit counts for both runs, showing which lines get hit significantly more often on the slow input.
+
+Your goal is to diagnose why the program runs slowly for the slow input and derive conditions or invariants that capture what triggers this slowdown.
+
+(B) Tasks: Analyze the given code and generate performance-characterizing invariants in natural language
+
+Phase 1: Identify expensive or onefficient code segments. In this phase you are asked to,
+1. Compare line-level hit counts between the fast and slow runs.
+2. Pinpoint lines or functions that get significantly more hits under the slow input.
+3. Infer how these lines might be interacting with data structures, loops, recursion, etc., especially as they relate to the input constraints (e.g., n <= 100).
+
+Phase 2: Derive performance-characterizing invariants (natural language). In this phase you are asked to,
+1. Generate natural language statements that describe conditions under which the program likely enters a slow path.
+2. Avoid using specific numeric values from the slow input; abstract them into categories or thresholds. However, make sure those thresholds adhere to the input constraints of the problem.
+3. Correlate these conditions strongly to input patterns (e.g., “when n is close to 100 and there is a nested loop,” or “when a data structure is repeatedly sorted”).
+4. Ensure your statements are broad enough to catch possible future slow scenarios, but still reflect realistic triggers given the constraints (like n <= 100).
+
+Note that not all performance-characterizing invariants are about maximising input size. You may refer to the following examples for inspiration --- some maximising the input size, some not --- but do not simply replicate them exactly. Rather, use them as inspiration to infer and tailor performance-characterizing invariants tailored for the C code and problem statement you were asked to analize:
+
+Example Invariant #1:
+
+A potential slowdown arises when certain arrays or lists grow large, causing repeated operations. One way to detect this is to check if the size of a critical array arr (used in a nested loop) exceeds a broad threshold.
+
+Natural language description: “If arr is very large and used in nested loops, the code may repeat operations too many times.”
+
+Code implementing the natural language description:
+
+```cpp
+// Sample checker function
+void check_size_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: size_invariant triggered - array too large for nested loops" << endl;
+        abort();
+    }
+}
+
+// Usage in main or function
+int arrSize = arr.size();
+check_size_invariant(arrSize > 50000);
+```
+
+Example Invariant #2:
+
+Repeated sorting or searching on a data structure can degrade performance, especially if the data structure is large or if the sorting is called multiple times in a loop.
+
+Natural language description: “If a large portion of the code’s execution time is spent in sorting a data structure repeatedly, performance may degrade. Check if the data structure is frequently resorted or reprocessed when it has many elements.”
+
+Code implementing the natural language description:
+
+```cpp
+void check_sort_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: sort_invariant triggered - repeatedly sorting large data" << endl;
+        abort();
+    }
+}
+
+// After reading input or before sorting
+int elementCount = someDataStructure.size();
+check_sort_invariant(elementCount > 100000 && /* some condition indicating repeated sorts */);
+```
+
+Example Invariant #3:
+
+Recursion (e.g., graph traversal or the iterative version of it, recurssive dynamic programming, recurssive computation like computing the next Fibonacci number, etc.) can become expensive if it explores a large search space. A sign of this might be a high branching factor combined with a deep recursion depth.
+
+Natural language description: “If the recursion depth is likely to exceed a certain level or if many branches are processed at each recursive call, the computation may become very expensive.”
+
+```cpp
+void check_dfs_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: dfs_invariant triggered - high recursion depth or branching factor" << endl;
+        abort();
+    }
+}
+
+// Before calling dfs or inside setup
+check_dfs_invariant((maxDepthEstimate > 50) && (branchFactorEstimate > 10));
+```
+
+Example Invariant #4:
+
+Memory usage spikes or large matrix operations can slow down computation if array dimensions become too large. If the program initializes a 2D array based on input dimensions n and m, certain input combinations can trigger large memory footprints or nested loops over the entire matrix.
+
+Natural language description: “If n and m together exceed a threshold that implies large matrix computations, the program may slow significantly.”
+
+```cpp
+void check_matrix_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: matrix_invariant triggered - potentially large matrix operations" << endl;
+        abort();
+    }
+}
+
+// After reading n, m
+check_matrix_invariant(n * m > 1000000);
+```
+
+Example invariant #5:
+
+If a program runs an expensive function or heavy-weight code (e.g. memory allocation) repeatedly within a performance-critical loop or function, the overhead for calling that function can accumulate, slowing the program significantly.
+
+Natural langauge description: "If function foo is an expensive function to execute, and is called a large number of times in a loop or recursive function, the program may slow down significantly"
+
+```cpp
+void check_expensive_function_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: expensive function invariant triggered - excessive calls" << endl;
+        abort();
+    }
+}
+
+check_expensive_function_invariant(n > 1000000);  // arbitrary, but large threshold
+for (i = 0; i < n; ++i) { 
+    foo(); // expensive function
+}
+```
+
+(C) Output Requirements
+1. Provide a list of natural language performance invariants explaining under what conditions the code slows down.
+2. Do not mention or rely on exact values from the provided slow input.
+3. Use or suggest threshold values that align with problem constraints (e.g., n <= 100).
+4. The output should be a concise, descriptive set of statements about performance triggers.
+
+(D) Important Considerations
+1. Avoid hardcoding. Don’t rely solely on the exact values from the provided slow input; think in terms of categories or thresholds that lead to slow execution.
+2. Avoid checks inside tight loops. Place checks in a way that does not significantly degrade performance.
+3. Focus on fuzzer utility. The checks should help a fuzzer detect slow performance triggers by hitting these conditions.
+
+(E) Problem Statement
+
+100 years have passed since the last victory of the man versus computer in Go. Technologies made a huge step forward and robots conquered the Earth! It's time for the final fight between human and robot that will decide the faith of the planet.
+
+The following game was chosen for the fights: initially there is a polynomial 
+
+P(x) = anxn + an - 1xn - 1 + ... + a1x + a0,  with yet undefined coefficients and the integer k. Players alternate their turns. At each turn, a player pick some index j, such that coefficient aj that stay near xj is not determined yet and sets it to any value (integer or real, positive or negative, 0 is also allowed). Computer moves first. The human will be declared the winner if and only if the resulting polynomial will be divisible by Q(x) = x - k.
+
+Polynomial P(x) is said to be divisible by polynomial Q(x) if there exists a representation P(x) = B(x)Q(x), where B(x) is also some polynomial.
+
+Some moves have been made already and now you wonder, is it true that human can guarantee the victory if he plays optimally?
+
+Input
+
+The first line of the input contains two integers n and k (1 ≤ n ≤ 100 000, |k| ≤ 10 000) — the size of the polynomial and the integer k.
+
+The i-th of the following n + 1 lines contain character '?' if the coefficient near xi - 1 is yet undefined or the integer value ai, if the coefficient is already known ( - 10 000 ≤ ai ≤ 10 000). Each of integers ai (and even an) may be equal to 0.
+
+Please note, that it's not guaranteed that you are given the position of the game where it's computer's turn to move.
+
+Output
+
+Print "Yes" (without quotes) if the human has winning strategy, or "No" (without quotes) otherwise.
+
+Examples
+
+Input
+
+1 2
+-1
+?
+
+
+Output
+
+Yes
+
+
+Input
+
+2 100
+-10000
+0
+1
+
+
+Output
+
+Yes
+
+Input
+
+4 5
+?
+1
+?
+1
+?
+
+
+Output
+
+No
+
+Note
+
+In the first sample, computer set a0 to  - 1 on the first move, so if human can set coefficient a1 to 0.5 and win.
+
+In the second sample, all coefficients are already set and the resulting polynomial is divisible by x - 100, so the human has won.
+
+(F) Program Solving the Problem Statement
+
+#include <bits/stdc++.h>
+using namespace std;
+const int c = -100005;
+int var = 0;
+bool isDiv(vector<int>& v, int k) {
+  bool pos = true;
+  int temp = 0;
+  for (int i = 0; i < v.size(); i++) {
+    temp += v[i];
+    if (temp % k != 0) {
+      pos = false;
+      break;
+    } else {
+      temp /= k;
+    }
+  }
+  if (temp != 0) pos = false;
+  return pos;
+}
+int main() {
+  int n, k;
+  cin >> n >> k;
+  vector<int> a(n + 1);
+  for (int i = 0; i < n + 1; i++) {
+    string s;
+    cin >> s;
+    if (s == "?") {
+      a[i] = c;
+      var++;
+    } else {
+      stringstream myStream;
+      myStream.str(s);
+      myStream >> a[i];
+    }
+  }
+  if (var == 0) {
+    if (k == 0) {
+      if (a[0] == 0)
+        cout << "Yes" << endl;
+      else
+        cout << "No" << endl;
+    } else {
+      if (isDiv(a, k))
+        cout << "Yes" << endl;
+      else
+        cout << "No" << endl;
+    }
+  } else {
+    if (k == 0) {
+      if (a[0] != 0 and a[0] != c)
+        cout << "No" << endl;
+      else if (a[0] == 0)
+        cout << "Yes" << endl;
+      else {
+        if ((n + 1 - var) % 2 == 0)
+          cout << "No" << endl;
+        else
+          cout << "Yes" << endl;
+      }
+    } else {
+      if ((n + 1) % 2 == 0)
+        cout << "Yes" << endl;
+      else
+        cout << "No" << endl;
+    }
+  }
+}
+
+
+(G) The Slow & Fast Inputs
+
+(G.1) Slow Input
+
+100 100
+1
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+
+
+(G.2) Fast Input
+
+1 10000
+1
+0
+
+
+(H) Hit Count Information of Slow Input and Fast Input (Aggregated):
+
+#include <bits/stdc++.h> /* line 1 slow_hit_count: 0, fast_hit_count: 0 */
+using namespace std; /* line 2 slow_hit_count: 0, fast_hit_count: 0 */
+const int c = -100005; /* line 3 slow_hit_count: 0, fast_hit_count: 0 */
+int var = 0; /* line 4 slow_hit_count: 0, fast_hit_count: 0 */
+bool isDiv(vector<int>& v, int k) { /* line 5 slow_hit_count: 1, fast_hit_count: 1 */
+  bool pos = true; /* line 6 slow_hit_count: 1, fast_hit_count: 1 */
+  int temp = 0; /* line 7 slow_hit_count: 1, fast_hit_count: 1 */
+  for (int i = 0; i < v.size(); i++) { /* line 8 slow_hit_count: 1, fast_hit_count: 1 */
+    temp += v[i]; /* line 9 slow_hit_count: 1, fast_hit_count: 1 */
+    if (temp % k != 0) { /* line 10 slow_hit_count: 1, fast_hit_count: 1 */
+      pos = false; /* line 11 slow_hit_count: 1, fast_hit_count: 1 */
+      break; /* line 12 slow_hit_count: 1, fast_hit_count: 1 */
+    } else { /* line 13 slow_hit_count: 0, fast_hit_count: 0 */
+      temp /= k; /* line 14 slow_hit_count: 0, fast_hit_count: 0 */
+    } /* line 15 slow_hit_count: 0, fast_hit_count: 0 */
+  } /* line 16 slow_hit_count: 0, fast_hit_count: 0 */
+  if (temp != 0) pos = false; /* line 17 slow_hit_count: 1, fast_hit_count: 1 */
+  return pos; /* line 18 slow_hit_count: 1, fast_hit_count: 1 */
+} /* line 19 slow_hit_count: 0, fast_hit_count: 0 */
+int main() { /* line 20 slow_hit_count: 1, fast_hit_count: 1 */
+  int n, k; /* line 21 slow_hit_count: 0, fast_hit_count: 0 */
+  cin >> n >> k; /* line 22 slow_hit_count: 1, fast_hit_count: 1 */
+  vector<int> a(n + 1); /* line 23 slow_hit_count: 2, fast_hit_count: 2 */
+  for (int i = 0; i < n + 1; i++) { /* line 24 slow_hit_count: 102, fast_hit_count: 3 */
+    string s; /* line 25 slow_hit_count: 202, fast_hit_count: 4 */
+    cin >> s; /* line 26 slow_hit_count: 101, fast_hit_count: 2 */
+    if (s == "?") { /* line 27 slow_hit_count: 101, fast_hit_count: 2 */
+      a[i] = c; /* line 28 slow_hit_count: 0, fast_hit_count: 0 */
+      var++; /* line 29 slow_hit_count: 0, fast_hit_count: 0 */
+    } else { /* line 30 slow_hit_count: 0, fast_hit_count: 0 */
+      stringstream myStream; /* line 31 slow_hit_count: 202, fast_hit_count: 4 */
+      myStream.str(s); /* line 32 slow_hit_count: 101, fast_hit_count: 2 */
+      myStream >> a[i]; /* line 33 slow_hit_count: 101, fast_hit_count: 2 */
+    } /* line 34 slow_hit_count: 0, fast_hit_count: 0 */
+  } /* line 35 slow_hit_count: 0, fast_hit_count: 0 */
+  if (var == 0) { /* line 36 slow_hit_count: 1, fast_hit_count: 1 */
+    if (k == 0) { /* line 37 slow_hit_count: 1, fast_hit_count: 1 */
+      if (a[0] == 0) /* line 38 slow_hit_count: 0, fast_hit_count: 0 */
+        cout << "Yes" << endl; /* line 39 slow_hit_count: 0, fast_hit_count: 0 */
+      else /* line 40 slow_hit_count: 0, fast_hit_count: 0 */
+        cout << "No" << endl; /* line 41 slow_hit_count: 0, fast_hit_count: 0 */
+    } else { /* line 42 slow_hit_count: 0, fast_hit_count: 0 */
+      if (isDiv(a, k)) /* line 43 slow_hit_count: 1, fast_hit_count: 1 */
+        cout << "Yes" << endl; /* line 44 slow_hit_count: 0, fast_hit_count: 0 */
+      else /* line 45 slow_hit_count: 0, fast_hit_count: 0 */
+        cout << "No" << endl; /* line 46 slow_hit_count: 1, fast_hit_count: 1 */
+    } /* line 47 slow_hit_count: 0, fast_hit_count: 0 */
+  } else { /* line 48 slow_hit_count: 0, fast_hit_count: 0 */
+    if (k == 0) { /* line 49 slow_hit_count: 0, fast_hit_count: 0 */
+      if (a[0] != 0 and a[0] != c) /* line 50 slow_hit_count: 0, fast_hit_count: 0 */
+        cout << "No" << endl; /* line 51 slow_hit_count: 0, fast_hit_count: 0 */
+      else if (a[0] == 0) /* line 52 slow_hit_count: 0, fast_hit_count: 0 */
+        cout << "Yes" << endl; /* line 53 slow_hit_count: 0, fast_hit_count: 0 */
+      else { /* line 54 slow_hit_count: 0, fast_hit_count: 0 */
+        if ((n + 1 - var) % 2 == 0) /* line 55 slow_hit_count: 0, fast_hit_count: 0 */
+          cout << "No" << endl; /* line 56 slow_hit_count: 0, fast_hit_count: 0 */
+        else /* line 57 slow_hit_count: 0, fast_hit_count: 0 */
+          cout << "Yes" << endl; /* line 58 slow_hit_count: 0, fast_hit_count: 0 */
+      } /* line 59 slow_hit_count: 0, fast_hit_count: 0 */
+    } else { /* line 60 slow_hit_count: 0, fast_hit_count: 0 */
+      if ((n + 1) % 2 == 0) /* line 61 slow_hit_count: 0, fast_hit_count: 0 */
+        cout << "Yes" << endl; /* line 62 slow_hit_count: 0, fast_hit_count: 0 */
+      else /* line 63 slow_hit_count: 0, fast_hit_count: 0 */
+        cout << "No" << endl; /* line 64 slow_hit_count: 0, fast_hit_count: 0 */
+    } /* line 65 slow_hit_count: 0, fast_hit_count: 0 */
+  } /* line 66 slow_hit_count: 0, fast_hit_count: 0 */
+} /* line 67 slow_hit_count: 1, fast_hit_count: 1 */
+
+
+assistant: To analyze the performance bottlenecks in the given C++ program, let's proceed with the two phases outlined in the task.
+
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+1. **Comparison of Line-Level Hit Counts**:
+   - The primary difference in execution frequency between the fast and slow inputs is within the loop (lines 24-35). The slow input hits lines 24, 25, and 26 significantly more than the fast input due to the increased size `n = 100` compared to `n = 1` in the fast input.
+   - Line 31 and line 32 (stringstream operations) are also hit significantly more for the slow input due to processing multiple non-'?' entries.
+
+2. **Pinpointing Significant Lines**:
+   - **Line 24 (`for` loop):** This loop processes each coefficient of the polynomial, and its iteration count is directly tied to `n + 1`. For `n = 100`, this loop executes 101 times, whereas for the fast input, it executes 2 times.
+   - **Line 31-33 (stringstream operations):** These lines are expensive when processing a large number of integer coefficients due to the overhead of converting strings to integers.
+
+3. **Interaction with Data Structures**:
+   - The `vector<int> a(n + 1)` implies storage and iteration over polynomial coefficients, with additional operations if coefficients are initially unknown (`'?'`).
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on the analysis, the following performance-characterizing invariants can be derived:
+
+1. **Invariant on Input Size and Initial Coefficients**:
+   - **Natural Language Statement:** "When the polynomial's degree `n` is large, especially with no unknown coefficients to be optimized ('?'), the program may slow down significantly due to repeated string-to-integer conversions and modular arithmetic checks."
+   - **Explanation:** As `n` increases, the computational overhead for reading and processing coefficients rises sharply. The lack of `'?'` reduces optimization opportunities, making the solution less efficient.
+
+2. **Invariant on Stringstream Overhead**:
+   - **Natural Language Statement:** "If the polynomial has many pre-defined coefficients (as opposed to unknown ones), performance may degrade due to the overhead of string-to-integer parsing."
+   - **Explanation:** Each coefficient input that is not `'?'` incurs a string parsing cost, which accumulates as the polynomial degree increases, leading to slow execution.
+
+3. **Invariant on Modulo Operations**:
+   - **Natural Language Statement:** "When processing a large polynomial with integer division and modulo operations, performance may degrade if the modulus or divisor is large or if the sequence of coefficients leads to frequent non-zero remainders."
+   - **Explanation:** The function `isDiv()` performs repeated modulo and division operations, which are computationally expensive as the polynomial size and complexity of coefficients increase.
+
+These invariants help identify scenarios causing slowdowns and are broad enough to cover potential future inputs that fit the described characteristics. They focus on input size, number of pre-defined coefficients, and arithmetic operations, adhering to the constraints such as `n <= 100,000`.
+
+user: (A) Context
+
+You have already:
+1. Identified expensive code segments (Phase 1).
+2. Derived performance-characterizing invariants in natural language (Phase 2).
+
+Now, you MUST transform these invariants into runtime checks and integrate them into the given C++ program.
+
+(B) Tasks: Revisit the performance-characteristic invariants you inferred in natural langauge and write faithful, error-free C++ code snippets to implement them
+
+You MUST do perform this task in two phases and provide separate answers for both: First, translating the invariants into checker code in C++ (phase 3, below). Second, integrating those checker C++ code snippets with the original program for which you inferred those invariants (phase 4, below).   
+
+Phase 3: Implement the natural language invariants inferred previously, in C++. In this phase you are asked to, 
+1. For each natural language invariant from Phase 2, you MUST produce C++ code that checks the condition at runtime.
+2. You MUST NOT relax or trivialize the checker code implementing these performance-characterizing invariants. You MUST faithfully implement them as described. 
+3. Use the following template for writing checker code in C++ which could also be implemented as a helper function:
+```cpp
+    if (/* condition based on the NL invariant */) {
+        cerr << "Warning: Performance bottleneck condition triggered!" << endl;
+        abort();
+    }
+``` 
+
+Note that not all performance-characterizing invariants are about maximising input size. You may refer to the following examples for inspiration --- some maximising the input size, some not --- but do not simply replicate them exactly. Rather, use them as inspiration to infer and tailor performance-characterizing invariants tailored for the C++ code and problem statement you were asked to analize:
+
+Example Invariant #1:
+
+A potential slowdown arises when certain arrays or lists grow large, causing repeated operations. One way to detect this is to check if the size of a critical array arr (used in a nested loop) exceeds a broad threshold.
+
+Natural language description: “If arr is very large and used in nested loops, the code may repeat operations too many times.”
+
+Code implementing the natural language description:
+
+```cpp
+// Sample checker function
+void check_size_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: size_invariant triggered - array too large for nested loops" << endl;
+        abort();
+    }
+}
+
+// Usage in main or function
+int arrSize = arr.size();
+check_size_invariant(arrSize > 50000);
+```
+
+Example Invariant #2:
+
+Repeated sorting or searching on a data structure can degrade performance, especially if the data structure is large or if the sorting is called multiple times in a loop.
+
+Natural language description: “If a large portion of the code’s execution time is spent in sorting a data structure repeatedly, performance may degrade. Check if the data structure is frequently resorted or reprocessed when it has many elements.”
+
+Code implementing the natural language description:
+
+```cpp
+void check_sort_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: sort_invariant triggered - repeatedly sorting large data" << endl;
+        abort();
+    }
+}
+
+// After reading input or before sorting
+int elementCount = someDataStructure.size();
+check_sort_invariant(elementCount > 100000 && /* some condition indicating repeated sorts */);
+```
+
+Example Invariant #3:
+
+Recursion (e.g., graph traversal or the iterative version of it, recurssive dynamic programming, recurssive computation like computing the next Fibonacci number, etc.) can become expensive if it explores a large search space. A sign of this might be a high branching factor combined with a deep recursion depth.
+
+Natural language description: “If the recursion depth is likely to exceed a certain level or if many branches are processed at each recursive call, the computation may become very expensive.”
+
+```cpp
+void check_dfs_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: dfs_invariant triggered - high recursion depth or branching factor" << endl;
+        abort();
+    }
+}
+
+// Before calling dfs or inside setup
+check_dfs_invariant((maxDepthEstimate > 50) && (branchFactorEstimate > 10));
+```
+
+Example Invariant #4:
+
+Memory usage spikes or large matrix operations can slow down computation if array dimensions become too large. If the program initializes a 2D array based on input dimensions n and m, certain input combinations can trigger large memory footprints or nested loops over the entire matrix.
+
+Natural language description: “If n and m together exceed a threshold that implies large matrix computations, the program may slow significantly.”
+
+```cpp
+void check_matrix_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: matrix_invariant triggered - potentially large matrix operations" << endl;
+        abort();
+    }
+}
+
+// After reading n, m
+check_matrix_invariant(n * m > 1000000);
+```
+
+Example invariant #5:
+
+If a program runs an expensive function or heavy-weight code (e.g. memory allocation) repeatedly within a performance-critical loop or function, the overhead for calling that function can accumulate, slowing the program significantly.
+
+Natural langauge description: "If function foo is an expensive function to execute, and is called a large number of times in a loop or recursive function, the program may slow down significantly"
+
+```cpp
+void check_expensive_function_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: expensive function invariant triggered - excessive calls" << endl;
+        abort();
+    }
+}
+
+check_expensive_function_invariant(n > 1000000);  // arbitrary, but large threshold
+for (i = 0; i < n; ++i) { 
+    foo(); // expensive function
+}
+```
+
+
+Phase 4: Propagate and insert conditional checks. In this phase you are asked to,
+1. Place each check at an effective point in the control/data flow (e.g., after reading inputs, before heavy loops) so you do not add overhead in tight loops. Note that the checker code could also be implemented as a helper function.
+2. If multiple checks overlap, merge or adjust them carefully to avoid redundant warnings.
+3. Provide the final, instrumented C++ code in code fences. Ensure it compiles cleanly and runs without errors.
+4. For each inserted check, add a short comment explaining which bottleneck it detects.
+
+Note the following important considerations when translating the inferred performance-characterizing invariants into code and propagating the checkers to the most efective program point by instrumenting the original code: 
+1. Avoid hardcoding. Don’t rely solely on the exact values from the provided slow input; think in terms of categories or thresholds that lead to slow execution.
+2. In addition to the warning message, remember to insert an "abort()" statement at the end of the checker.
+3. Focus on fuzzer utility. The checks should help a fuzzer detect slow performance triggers by hitting these conditions.
+
+As a refresher, below you are provided with the same program statement and C++ code for which you already inferred performance-characterizing invariants:
+
+Problem statement:
+100 years have passed since the last victory of the man versus computer in Go. Technologies made a huge step forward and robots conquered the Earth! It's time for the final fight between human and robot that will decide the faith of the planet.
+
+The following game was chosen for the fights: initially there is a polynomial 
+
+P(x) = anxn + an - 1xn - 1 + ... + a1x + a0,  with yet undefined coefficients and the integer k. Players alternate their turns. At each turn, a player pick some index j, such that coefficient aj that stay near xj is not determined yet and sets it to any value (integer or real, positive or negative, 0 is also allowed). Computer moves first. The human will be declared the winner if and only if the resulting polynomial will be divisible by Q(x) = x - k.
+
+Polynomial P(x) is said to be divisible by polynomial Q(x) if there exists a representation P(x) = B(x)Q(x), where B(x) is also some polynomial.
+
+Some moves have been made already and now you wonder, is it true that human can guarantee the victory if he plays optimally?
+
+Input
+
+The first line of the input contains two integers n and k (1 ≤ n ≤ 100 000, |k| ≤ 10 000) — the size of the polynomial and the integer k.
+
+The i-th of the following n + 1 lines contain character '?' if the coefficient near xi - 1 is yet undefined or the integer value ai, if the coefficient is already known ( - 10 000 ≤ ai ≤ 10 000). Each of integers ai (and even an) may be equal to 0.
+
+Please note, that it's not guaranteed that you are given the position of the game where it's computer's turn to move.
+
+Output
+
+Print "Yes" (without quotes) if the human has winning strategy, or "No" (without quotes) otherwise.
+
+Examples
+
+Input
+
+1 2
+-1
+?
+
+
+Output
+
+Yes
+
+
+Input
+
+2 100
+-10000
+0
+1
+
+
+Output
+
+Yes
+
+Input
+
+4 5
+?
+1
+?
+1
+?
+
+
+Output
+
+No
+
+Note
+
+In the first sample, computer set a0 to  - 1 on the first move, so if human can set coefficient a1 to 0.5 and win.
+
+In the second sample, all coefficients are already set and the resulting polynomial is divisible by x - 100, so the human has won.
+
+Solution (C++ code):
+{solution}
+
+
+assistant: Let's implement the performance-characterizing invariants as runtime checks in C++.
+
+### Phase 3: Implementing Invariants in C++
+
+Here are C++ code snippets for the invariants:
+
+1. **Invariant on Input Size and Initial Coefficients**:
+   ```cpp
+   void check_large_degree_no_unknowns(bool condition) {
+       if (condition) {
+           cerr << "Warning: Large polynomial degree with no unknown coefficients may cause performance issues!" << endl;
+           abort();
+       }
+   }
+   ```
+
+2. **Invariant on Stringstream Overhead**:
+   ```cpp
+   void check_stream_conversion_overhead(bool condition) {
+       if (condition) {
+           cerr << "Warning: Excessive stringstream operations due to pre-defined coefficients!" << endl;
+           abort();
+       }
+   }
+   ```
+
+3. **Invariant on Modulo Operations**:
+   ```cpp
+   void check_modulo_operations(bool condition) {
+       if (condition) {
+           cerr << "Warning: Heavy use of modulo operations with large k or complex coefficient sequences!" << endl;
+           abort();
+       }
+   }
+   ```
+
+### Phase 4: Integrating Checks into the Original Program
+
+Below is the original C++ program with the invariant checks integrated at appropriate points:
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+const int c = -100005;
+int var = 0;
+
+bool isDiv(vector<int>& v, int k) {
+    bool pos = true;
+    int temp = 0;
+    for (int i = 0; i < v.size(); i++) {
+        temp += v[i];
+        if (temp % k != 0) {
+            pos = false;
+            break;
+        } else {
+            temp /= k;
+        }
+    }
+    if (temp != 0) pos = false;
+    return pos;
+}
+
+// Checker functions for performance-characterizing invariants
+void check_large_degree_no_unknowns(bool condition) {
+    if (condition) {
+        cerr << "Warning: Large polynomial degree with no unknown coefficients may cause performance issues!" << endl;
+        abort();
+    }
+}
+
+void check_stream_conversion_overhead(bool condition) {
+    if (condition) {
+        cerr << "Warning: Excessive stringstream operations due to pre-defined coefficients!" << endl;
+        abort();
+    }
+}
+
+void check_modulo_operations(bool condition) {
+    if (condition) {
+        cerr << "Warning: Heavy use of modulo operations with large k or complex coefficient sequences!" << endl;
+        abort();
+    }
+}
+
+int main() {
+    int n, k;
+    cin >> n >> k;
+    vector<int> a(n + 1);
+    int predefined_count = 0;  // Count of pre-defined coefficients
+
+    for (int i = 0; i < n + 1; i++) {
+        string s;
+        cin >> s;
+        if (s == "?") {
+            a[i] = c;
+            var++;
+        } else {
+            stringstream myStream;
+            myStream.str(s);
+            myStream >> a[i];
+            predefined_count++;  // Increment for each pre-defined coefficient
+        }
+    }
+
+    // Check for large polynomial degree with no unknowns
+    check_large_degree_no_unknowns(n > 10000 && var == 0);
+
+    // Check for excessive stringstream operations
+    check_stream_conversion_overhead(predefined_count > 5000);
+
+    // Check for heavy modulo operations
+    check_modulo_operations(k > 5000 && predefined_count > 5000);
+
+    if (var == 0) {
+        if (k == 0) {
+            if (a[0] == 0)
+                cout << "Yes" << endl;
+            else
+                cout << "No" << endl;
+        } else {
+            if (isDiv(a, k))
+                cout << "Yes" << endl;
+            else
+                cout << "No" << endl;
+        }
+    } else {
+        if (k == 0) {
+            if (a[0] != 0 && a[0] != c)
+                cout << "No" << endl;
+            else if (a[0] == 0)
+                cout << "Yes" << endl;
+            else {
+                if ((n + 1 - var) % 2 == 0)
+                    cout << "No" << endl;
+                else
+                    cout << "Yes" << endl;
+            }
+        } else {
+            if ((n + 1) % 2 == 0)
+                cout << "Yes" << endl;
+            else
+                cout << "No" << endl;
+        }
+    }
+}
+```
+
+### Explanation
+
+- **Large Polynomial Degree with No Unknowns:** This check is placed after reading inputs to detect when the polynomial degree is large and no coefficients are unknown, which can lead to computational inefficiencies.
+  
+- **Excessive Stringstream Operations:** This check counts the number of pre-defined coefficients and triggers if their count is significantly high, suggesting potential overhead from too many string-to-integer conversions.
+
+- **Heavy Modulo Operations:** This check evaluates after input, using the size of `k` and number of coefficients to detect potential performance bottlenecks due to complex arithmetic operations.
+
+These checks are implemented as functions for modularity and inserted strategically to minimize additional overhead.
+

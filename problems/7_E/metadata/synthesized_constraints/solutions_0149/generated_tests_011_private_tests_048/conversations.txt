@@ -1,0 +1,1365 @@
+system: You are a helpful assistant good at coding.
+
+user: (A) Context
+
+You are an experienced C software engineer focusing on performance bottlenecks. You have:
+1. A problem statement describing a task or algorithm (with constraints such as n <= 100).
+2. A C program that implements a solution to that problem.
+3. Two inputs: a “fast” input that completes quickly, and a “slow” input that takes much longer—both inputs have similar size/structure.
+4. Line-level hit counts for both runs, showing which lines get hit significantly more often on the slow input.
+
+Your goal is to diagnose why the program runs slowly for the slow input and derive conditions or invariants that capture what triggers this slowdown.
+
+(B) Tasks: Analyze the given code and generate performance-characterizing invariants in natural language
+
+Phase 1: Identify expensive or onefficient code segments. In this phase you are asked to,
+1. Compare line-level hit counts between the fast and slow runs.
+2. Pinpoint lines or functions that get significantly more hits under the slow input.
+3. Infer how these lines might be interacting with data structures, loops, recursion, etc., especially as they relate to the input constraints (e.g., n <= 100).
+
+Phase 2: Derive performance-characterizing invariants (natural language). In this phase you are asked to,
+1. Generate natural language statements that describe conditions under which the program likely enters a slow path.
+2. Avoid using specific numeric values from the slow input; abstract them into categories or thresholds. However, make sure those thresholds adhere to the input constraints of the problem.
+3. Correlate these conditions strongly to input patterns (e.g., “when n is close to 100 and there is a nested loop,” or “when a data structure is repeatedly sorted”).
+4. Ensure your statements are broad enough to catch possible future slow scenarios, but still reflect realistic triggers given the constraints (like n <= 100).
+
+Note that not all performance-characterizing invariants are about maximising input size. You may refer to the following examples for inspiration --- some maximising the input size, some not --- but do not simply replicate them exactly. Rather, use them as inspiration to infer and tailor performance-characterizing invariants tailored for the C code and problem statement you were asked to analize:
+
+Example Invariant #1:
+
+A potential slowdown arises when certain arrays or lists grow large, causing repeated operations. One way to detect this is to check if the size of a critical array arr (used in a nested loop) exceeds a broad threshold.
+
+Natural language description: “If arr is very large and used in nested loops, the code may repeat operations too many times.”
+
+Code implementing the natural language description:
+
+```cpp
+// Sample checker function
+void check_size_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: size_invariant triggered - array too large for nested loops" << endl;
+        abort();
+    }
+}
+
+// Usage in main or function
+int arrSize = arr.size();
+check_size_invariant(arrSize > 50000);
+```
+
+Example Invariant #2:
+
+Repeated sorting or searching on a data structure can degrade performance, especially if the data structure is large or if the sorting is called multiple times in a loop.
+
+Natural language description: “If a large portion of the code’s execution time is spent in sorting a data structure repeatedly, performance may degrade. Check if the data structure is frequently resorted or reprocessed when it has many elements.”
+
+Code implementing the natural language description:
+
+```cpp
+void check_sort_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: sort_invariant triggered - repeatedly sorting large data" << endl;
+        abort();
+    }
+}
+
+// After reading input or before sorting
+int elementCount = someDataStructure.size();
+check_sort_invariant(elementCount > 100000 && /* some condition indicating repeated sorts */);
+```
+
+Example Invariant #3:
+
+Recursion (e.g., graph traversal or the iterative version of it, recurssive dynamic programming, recurssive computation like computing the next Fibonacci number, etc.) can become expensive if it explores a large search space. A sign of this might be a high branching factor combined with a deep recursion depth.
+
+Natural language description: “If the recursion depth is likely to exceed a certain level or if many branches are processed at each recursive call, the computation may become very expensive.”
+
+```cpp
+void check_dfs_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: dfs_invariant triggered - high recursion depth or branching factor" << endl;
+        abort();
+    }
+}
+
+// Before calling dfs or inside setup
+check_dfs_invariant((maxDepthEstimate > 50) && (branchFactorEstimate > 10));
+```
+
+Example Invariant #4:
+
+Memory usage spikes or large matrix operations can slow down computation if array dimensions become too large. If the program initializes a 2D array based on input dimensions n and m, certain input combinations can trigger large memory footprints or nested loops over the entire matrix.
+
+Natural language description: “If n and m together exceed a threshold that implies large matrix computations, the program may slow significantly.”
+
+```cpp
+void check_matrix_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: matrix_invariant triggered - potentially large matrix operations" << endl;
+        abort();
+    }
+}
+
+// After reading n, m
+check_matrix_invariant(n * m > 1000000);
+```
+
+Example invariant #5:
+
+If a program runs an expensive function or heavy-weight code (e.g. memory allocation) repeatedly within a performance-critical loop or function, the overhead for calling that function can accumulate, slowing the program significantly.
+
+Natural langauge description: "If function foo is an expensive function to execute, and is called a large number of times in a loop or recursive function, the program may slow down significantly"
+
+```cpp
+void check_expensive_function_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: expensive function invariant triggered - excessive calls" << endl;
+        abort();
+    }
+}
+
+check_expensive_function_invariant(n > 1000000);  // arbitrary, but large threshold
+for (i = 0; i < n; ++i) { 
+    foo(); // expensive function
+}
+```
+
+(C) Output Requirements
+1. Provide a list of natural language performance invariants explaining under what conditions the code slows down.
+2. Do not mention or rely on exact values from the provided slow input.
+3. Use or suggest threshold values that align with problem constraints (e.g., n <= 100).
+4. The output should be a concise, descriptive set of statements about performance triggers.
+
+(D) Important Considerations
+1. Avoid hardcoding. Don’t rely solely on the exact values from the provided slow input; think in terms of categories or thresholds that lead to slow execution.
+2. Avoid checks inside tight loops. Place checks in a way that does not significantly degrade performance.
+3. Focus on fuzzer utility. The checks should help a fuzzer detect slow performance triggers by hitting these conditions.
+
+(E) Problem Statement
+
+Most C/C++ programmers know about excellent opportunities that preprocessor #define directives give; but many know as well about the problems that can arise because of their careless use.
+
+In this problem we consider the following model of #define constructions (also called macros). Each macro has its name and value. The generic syntax for declaring a macro is the following:
+
+#define macro_name macro_value
+
+After the macro has been declared, "macro_name" is replaced with "macro_value" each time it is met in the program (only the whole tokens can be replaced; i.e. "macro_name" is replaced only when it is surrounded by spaces or other non-alphabetic symbol). A "macro_value" within our model can only be an arithmetic expression consisting of variables, four arithmetic operations, brackets, and also the names of previously declared macros (in this case replacement is performed sequentially). The process of replacing macros with their values is called substitution.
+
+One of the main problems arising while using macros — the situation when as a result of substitution we get an arithmetic expression with the changed order of calculation because of different priorities of the operations.
+
+Let's consider the following example. Say, we declared such a #define construction:
+
+#define sum x + y
+
+and further in the program the expression "2 * sum" is calculated. After macro substitution is performed we get "2 * x + y", instead of intuitively expected "2 * (x + y)".
+
+Let's call the situation "suspicious", if after the macro substitution the order of calculation changes, falling outside the bounds of some macro. Thus, your task is to find out by the given set of #define definitions and the given expression if this expression is suspicious or not.
+
+Let's speak more formally. We should perform an ordinary macros substitution in the given expression. Moreover, we should perform a "safe" macros substitution in the expression, putting in brackets each macro value; after this, guided by arithmetic rules of brackets expansion, we can omit some of the brackets. If there exist a way to get an expression, absolutely coinciding with the expression that is the result of an ordinary substitution (character-by-character, but ignoring spaces), then this expression and the macros system are called correct, otherwise — suspicious.
+
+Note that we consider the "/" operation as the usual mathematical division, not the integer division like in C/C++. That's why, for example, in the expression "a*(b/c)" we can omit brackets to get the expression "a*b/c".
+
+Input
+
+The first line contains the only number n (0 ≤ n ≤ 100) — the amount of #define constructions in the given program.
+
+Then there follow n lines, each of them contains just one #define construction. Each construction has the following syntax:
+
+#define name expression
+
+where
+
+  * name — the macro name, 
+  * expression — the expression with which the given macro will be replaced. An expression is a non-empty string, containing digits,names of variables, names of previously declared macros, round brackets and operational signs +-*/. It is guaranteed that the expression (before and after macros substitution) is a correct arithmetic expression, having no unary operations. The expression contains only non-negative integers, not exceeding 109. 
+
+
+
+All the names (#define constructions' names and names of their arguments) are strings of case-sensitive Latin characters. It is guaranteed that the name of any variable is different from any #define construction.
+
+Then, the last line contains an expression that you are to check. This expression is non-empty and satisfies the same limitations as the expressions in #define constructions.
+
+The input lines may contain any number of spaces anywhere, providing these spaces do not break the word "define" or the names of constructions and variables. In particular, there can be any number of spaces before and after the "#" symbol.
+
+The length of any line from the input file does not exceed 100 characters.
+
+Output
+
+Output "OK", if the expression is correct according to the above given criterion, otherwise output "Suspicious".
+
+Examples
+
+Input
+
+1
+#define sum x + y
+1 * sum
+
+
+Output
+
+Suspicious
+
+
+Input
+
+1
+#define sum  (x + y)
+sum - sum
+
+
+Output
+
+OK
+
+
+Input
+
+4
+#define sum  x + y
+#define mul  a * b
+#define div  a / b
+#define expr sum + mul * div * mul
+expr
+
+
+Output
+
+OK
+
+
+Input
+
+3
+#define SumSafe   (a+b)
+#define DivUnsafe  a/b
+#define DenominatorUnsafe  a*b
+((SumSafe) + DivUnsafe/DivUnsafe + x/DenominatorUnsafe)
+
+
+Output
+
+Suspicious
+
+(F) Program Solving the Problem Statement
+
+#include <bits/stdc++.h>
+using namespace std;
+struct operation {
+  string l, r;
+  char op;
+};
+vector<operation> operations;
+void f1(const vector<string>& v, const vector<char>& op) {
+  int n = static_cast<int>((v).size());
+  for (int i = 0; i < n - 1; ++i) {
+    operations.push_back({v[0], v[i + 1], op[i]});
+  }
+}
+void f3(const string& s);
+void f2(const vector<string>& v, const vector<char>& op) {
+  vector<string> newV;
+  vector<char> newOp;
+  vector<string> currV;
+  vector<char> currOp;
+  string curr = v[0];
+  currV.push_back(v[0]);
+  int n = static_cast<int>((v).size());
+  for (int i = 0; i < n - 1; ++i) {
+    if (op[i] == '*' || op[i] == '/') {
+      curr += op[i];
+      curr += v[i + 1];
+      currV.push_back(v[i + 1]);
+      currOp.push_back(op[i]);
+    } else {
+      newV.push_back(curr);
+      curr = v[i + 1];
+      newOp.push_back(op[i]);
+      if (!currOp.empty()) {
+        f1(currV, currOp);
+      }
+      currV = {v[i + 1]};
+      currOp.clear();
+    }
+  }
+  newV.push_back(curr);
+  if (!currOp.empty()) {
+    f1(currV, currOp);
+  }
+  for (int i = 0; i < static_cast<int>((newV).size()) - 1; ++i) {
+    operations.push_back({newV[0], newV[i + 1], newOp[i]});
+  }
+}
+set<string> toCheck;
+map<string, string> m;
+set<string> checked;
+void f3(const string& s) {
+  checked.insert(s);
+  int n = static_cast<int>((s).size());
+  if (m.count(s)) {
+    toCheck.insert(m[s]);
+    return;
+  }
+  int balance = 0;
+  bool inPar = true;
+  for (int i = 0; i < n; ++i) {
+    if (s[i] == '(') {
+      ++balance;
+    }
+    if (s[i] == ')') {
+      --balance;
+    }
+    if ((i != n - 1 && !balance) || static_cast<int>((s).size()) == 1) {
+      inPar = false;
+      break;
+    }
+  }
+  if (inPar) {
+    string t = "";
+    for (int i = 1; i < n - 1; ++i) {
+      t += s[i];
+    }
+    f3(t);
+    return;
+  }
+  bool ops = false;
+  for (int i = 0; i < n; ++i) {
+    if (s[i] == '-' || s[i] == '+' || s[i] == '*' || s[i] == '/') {
+      ops = true;
+      break;
+    }
+  }
+  if (!ops) {
+    return;
+  }
+  vector<string> v;
+  v.push_back("");
+  vector<char> op;
+  balance = 0;
+  for (int i = 0; i < n; ++i) {
+    if (s[i] == '(') {
+      ++balance;
+    }
+    if (s[i] == ')') {
+      --balance;
+    }
+    if (balance || s[i] == ')') {
+      v.back() += s[i];
+      continue;
+    }
+    if (s[i] == '-' || s[i] == '+' || s[i] == '*' || s[i] == '/') {
+      op.push_back(s[i]);
+      v.push_back("");
+      continue;
+    } else {
+      v.back() += s[i];
+    }
+  }
+  f2(v, op);
+}
+string deleteSpaces(const string& s) {
+  string ans = "";
+  int n = static_cast<int>((s).size());
+  for (int i = 0; i < n; ++i) {
+    if (s[i] != ' ') {
+      ans += s[i];
+    }
+  }
+  return ans;
+}
+set<char> freeOp(const string& s) {
+  string t = m[s];
+  set<char> ans;
+  int balance = 0;
+  int n = static_cast<int>((t).size());
+  for (int i = 0; i < n; ++i) {
+    if (t[i] == '(') {
+      ++balance;
+      continue;
+    }
+    if (t[i] == ')') {
+      --balance;
+      continue;
+    }
+    if (!balance &&
+        (t[i] == '-' || t[i] == '+' || t[i] == '*' || t[i] == '/')) {
+      ans.insert(t[i]);
+    }
+  }
+  return ans;
+}
+bool check(const operation& o) {
+  if (m.count(o.l)) {
+    toCheck.insert(m[o.l]);
+  } else {
+    toCheck.insert(o.l);
+  }
+  if (m.count(o.r)) {
+    toCheck.insert(m[o.r]);
+  } else {
+    toCheck.insert(o.r);
+  }
+  if (o.op == '+') {
+    return true;
+  }
+  if (o.op == '-') {
+    if (!m.count(o.r)) {
+      return true;
+    }
+    set<char> sr = freeOp(o.r);
+    if (sr.count('+') || sr.count('-')) {
+      return false;
+    }
+    return true;
+  }
+  if (o.op == '*') {
+    if (m.count(o.r)) {
+      set<char> sr = freeOp(o.r);
+      if (sr.count('+') || sr.count('-')) {
+        return false;
+      }
+    }
+    if (m.count(o.l)) {
+      set<char> sl = freeOp(o.l);
+      if (sl.count('+') || sl.count('-')) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (o.op == '/') {
+    if (m.count(o.r)) {
+      set<char> sr = freeOp(o.r);
+      if (!sr.empty()) {
+        return false;
+      }
+    }
+    if (m.count(o.l)) {
+      set<char> sl = freeOp(o.l);
+      if (sl.count('+') || sl.count('-')) {
+        return false;
+      }
+    }
+    return true;
+  }
+}
+int main() {
+  int n;
+  cin >> n;
+  if (!n) {
+    cout << "OK\n";
+    return 0;
+  }
+  for (int i = 0; i < n; ++i) {
+    string def;
+    cin >> def;
+    if (def != "#define") {
+      cin >> def;
+    }
+    string name;
+    cin >> name;
+    string val;
+    getline(cin, val);
+    m[name] = deleteSpaces(val);
+  }
+  string s;
+  getline(cin, s);
+  s = deleteSpaces(s);
+  toCheck.insert(s);
+  while (!toCheck.empty()) {
+    operations.clear();
+    string tmp = *toCheck.begin();
+    if (checked.count(tmp)) {
+      toCheck.erase(tmp);
+      continue;
+    }
+    f3(tmp);
+    for (int i = 0; i < static_cast<int>((operations).size()); ++i) {
+      if (!check(operations[i])) {
+        cout << "Suspicious\n";
+        return 0;
+      }
+    }
+    toCheck.erase(tmp);
+  }
+  cout << "OK\n";
+}
+
+
+(G) The Slow & Fast Inputs
+
+(G.1) Slow Input
+
+4
+#define sum   xx+yy
+#define difference  aaab-bbaBBBB
+#define mult   a*b
+#define division  aaaaaaaaaaaaaaaaaaaaa/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+sum+difference+(sum)*(difference)-mult+mult*division+division*mult+division/(mult+sum-(difference))
+
+
+(G.2) Fast Input
+
+1
+#define sum x-y
+sum*r
+
+
+(H) Hit Count Information of Slow Input and Fast Input (Aggregated):
+
+#include <bits/stdc++.h> /* line 1 slow_hit_count: 0, fast_hit_count: 0 */
+using namespace std; /* line 2 slow_hit_count: 0, fast_hit_count: 0 */
+struct operation { /* line 3 slow_hit_count: 0, fast_hit_count: 0 */
+  string l, r; /* line 4 slow_hit_count: 0, fast_hit_count: 0 */
+  char op; /* line 5 slow_hit_count: 0, fast_hit_count: 0 */
+}; /* line 6 slow_hit_count: 0, fast_hit_count: 0 */
+vector<operation> operations; /* line 7 slow_hit_count: 0, fast_hit_count: 0 */
+void f1(const vector<string>& v, const vector<char>& op) { /* line 8 slow_hit_count: 10, fast_hit_count: 1 */
+  int n = static_cast<int>((v).size()); /* line 9 slow_hit_count: 10, fast_hit_count: 1 */
+  for (int i = 0; i < n - 1; ++i) { /* line 10 slow_hit_count: 20, fast_hit_count: 2 */
+    operations.push_back({v[0], v[i + 1], op[i]}); /* line 11 slow_hit_count: 10, fast_hit_count: 1 */
+  } /* line 12 slow_hit_count: 0, fast_hit_count: 0 */
+} /* line 13 slow_hit_count: 10, fast_hit_count: 1 */
+void f3(const string& s); /* line 14 slow_hit_count: 0, fast_hit_count: 0 */
+void f2(const vector<string>& v, const vector<char>& op) { /* line 15 slow_hit_count: 10, fast_hit_count: 1 */
+  vector<string> newV; /* line 16 slow_hit_count: 20, fast_hit_count: 2 */
+  vector<char> newOp; /* line 17 slow_hit_count: 20, fast_hit_count: 2 */
+  vector<string> currV; /* line 18 slow_hit_count: 20, fast_hit_count: 2 */
+  vector<char> currOp; /* line 19 slow_hit_count: 20, fast_hit_count: 2 */
+  string curr = v[0]; /* line 20 slow_hit_count: 20, fast_hit_count: 2 */
+  currV.push_back(v[0]); /* line 21 slow_hit_count: 10, fast_hit_count: 1 */
+  int n = static_cast<int>((v).size()); /* line 22 slow_hit_count: 10, fast_hit_count: 1 */
+  for (int i = 0; i < n - 1; ++i) { /* line 23 slow_hit_count: 30, fast_hit_count: 2 */
+    if (op[i] == '*' || op[i] == '/') { /* line 24 slow_hit_count: 20, fast_hit_count: 1 */
+      curr += op[i]; /* line 25 slow_hit_count: 10, fast_hit_count: 1 */
+      curr += v[i + 1]; /* line 26 slow_hit_count: 10, fast_hit_count: 1 */
+      currV.push_back(v[i + 1]); /* line 27 slow_hit_count: 10, fast_hit_count: 1 */
+      currOp.push_back(op[i]); /* line 28 slow_hit_count: 10, fast_hit_count: 1 */
+    } else { /* line 29 slow_hit_count: 0, fast_hit_count: 0 */
+      newV.push_back(curr); /* line 30 slow_hit_count: 10, fast_hit_count: 0 */
+      curr = v[i + 1]; /* line 31 slow_hit_count: 10, fast_hit_count: 0 */
+      newOp.push_back(op[i]); /* line 32 slow_hit_count: 10, fast_hit_count: 0 */
+      if (!currOp.empty()) { /* line 33 slow_hit_count: 10, fast_hit_count: 0 */
+        f1(currV, currOp); /* line 34 slow_hit_count: 3, fast_hit_count: 0 */
+      } /* line 35 slow_hit_count: 0, fast_hit_count: 0 */
+      currV = {v[i + 1]}; /* line 36 slow_hit_count: 20, fast_hit_count: 0 */
+      currOp.clear(); /* line 37 slow_hit_count: 10, fast_hit_count: 0 */
+    } /* line 38 slow_hit_count: 0, fast_hit_count: 0 */
+  } /* line 39 slow_hit_count: 0, fast_hit_count: 0 */
+  newV.push_back(curr); /* line 40 slow_hit_count: 10, fast_hit_count: 1 */
+  if (!currOp.empty()) { /* line 41 slow_hit_count: 10, fast_hit_count: 1 */
+    f1(currV, currOp); /* line 42 slow_hit_count: 7, fast_hit_count: 1 */
+  } /* line 43 slow_hit_count: 0, fast_hit_count: 0 */
+  for (int i = 0; i < static_cast<int>((newV).size()) - 1; ++i) { /* line 44 slow_hit_count: 20, fast_hit_count: 1 */
+    operations.push_back({newV[0], newV[i + 1], newOp[i]}); /* line 45 slow_hit_count: 10, fast_hit_count: 0 */
+  } /* line 46 slow_hit_count: 0, fast_hit_count: 0 */
+} /* line 47 slow_hit_count: 10, fast_hit_count: 1 */
+set<string> toCheck; /* line 48 slow_hit_count: 0, fast_hit_count: 0 */
+map<string, string> m; /* line 49 slow_hit_count: 0, fast_hit_count: 0 */
+set<string> checked; /* line 50 slow_hit_count: 0, fast_hit_count: 0 */
+void f3(const string& s) { /* line 51 slow_hit_count: 23, fast_hit_count: 1 */
+  checked.insert(s); /* line 52 slow_hit_count: 23, fast_hit_count: 1 */
+  int n = static_cast<int>((s).size()); /* line 53 slow_hit_count: 23, fast_hit_count: 1 */
+  if (m.count(s)) { /* line 54 slow_hit_count: 23, fast_hit_count: 1 */
+    toCheck.insert(m[s]); /* line 55 slow_hit_count: 2, fast_hit_count: 0 */
+    return; /* line 56 slow_hit_count: 13, fast_hit_count: 0 */
+  } /* line 57 slow_hit_count: 0, fast_hit_count: 0 */
+  int balance = 0; /* line 58 slow_hit_count: 21, fast_hit_count: 1 */
+  bool inPar = true; /* line 59 slow_hit_count: 21, fast_hit_count: 1 */
+  for (int i = 0; i < n; ++i) { /* line 60 slow_hit_count: 65, fast_hit_count: 1 */
+    if (s[i] == '(') { /* line 61 slow_hit_count: 62, fast_hit_count: 1 */
+      ++balance; /* line 62 slow_hit_count: 5, fast_hit_count: 0 */
+    } /* line 63 slow_hit_count: 0, fast_hit_count: 0 */
+    if (s[i] == ')') { /* line 64 slow_hit_count: 62, fast_hit_count: 1 */
+      --balance; /* line 65 slow_hit_count: 5, fast_hit_count: 0 */
+    } /* line 66 slow_hit_count: 0, fast_hit_count: 0 */
+    if ((i != n - 1 && !balance) || static_cast<int>((s).size()) == 1) { /* line 67 slow_hit_count: 62, fast_hit_count: 1 */
+      inPar = false; /* line 68 slow_hit_count: 18, fast_hit_count: 1 */
+      break; /* line 69 slow_hit_count: 18, fast_hit_count: 1 */
+    } /* line 70 slow_hit_count: 0, fast_hit_count: 0 */
+  } /* line 71 slow_hit_count: 0, fast_hit_count: 0 */
+  if (inPar) { /* line 72 slow_hit_count: 21, fast_hit_count: 1 */
+    string t = ""; /* line 73 slow_hit_count: 3, fast_hit_count: 0 */
+    for (int i = 1; i < n - 1; ++i) { /* line 74 slow_hit_count: 37, fast_hit_count: 0 */
+      t += s[i]; /* line 75 slow_hit_count: 34, fast_hit_count: 0 */
+    } /* line 76 slow_hit_count: 0, fast_hit_count: 0 */
+    f3(t); /* line 77 slow_hit_count: 3, fast_hit_count: 0 */
+    return; /* line 78 slow_hit_count: 3, fast_hit_count: 0 */
+  } /* line 79 slow_hit_count: 0, fast_hit_count: 0 */
+  bool ops = false; /* line 80 slow_hit_count: 18, fast_hit_count: 1 */
+  for (int i = 0; i < n; ++i) { /* line 81 slow_hit_count: 147, fast_hit_count: 4 */
+    if (s[i] == '-' || s[i] == '+' || s[i] == '*' || s[i] == '/') { /* line 82 slow_hit_count: 139, fast_hit_count: 4 */
+      ops = true; /* line 83 slow_hit_count: 10, fast_hit_count: 1 */
+      break; /* line 84 slow_hit_count: 10, fast_hit_count: 1 */
+    } /* line 85 slow_hit_count: 0, fast_hit_count: 0 */
+  } /* line 86 slow_hit_count: 0, fast_hit_count: 0 */
+  if (!ops) { /* line 87 slow_hit_count: 18, fast_hit_count: 1 */
+    return; /* line 88 slow_hit_count: 8, fast_hit_count: 0 */
+  } /* line 89 slow_hit_count: 0, fast_hit_count: 0 */
+  vector<string> v; /* line 90 slow_hit_count: 20, fast_hit_count: 2 */
+  v.push_back(""); /* line 91 slow_hit_count: 10, fast_hit_count: 1 */
+  vector<char> op; /* line 92 slow_hit_count: 20, fast_hit_count: 2 */
+  balance = 0; /* line 93 slow_hit_count: 10, fast_hit_count: 1 */
+  for (int i = 0; i < n; ++i) { /* line 94 slow_hit_count: 279, fast_hit_count: 6 */
+    if (s[i] == '(') { /* line 95 slow_hit_count: 269, fast_hit_count: 5 */
+      ++balance; /* line 96 slow_hit_count: 9, fast_hit_count: 0 */
+    } /* line 97 slow_hit_count: 0, fast_hit_count: 0 */
+    if (s[i] == ')') { /* line 98 slow_hit_count: 269, fast_hit_count: 5 */
+      --balance; /* line 99 slow_hit_count: 9, fast_hit_count: 0 */
+    } /* line 100 slow_hit_count: 0, fast_hit_count: 0 */
+    if (balance || s[i] == ')') { /* line 101 slow_hit_count: 269, fast_hit_count: 5 */
+      v.back() += s[i]; /* line 102 slow_hit_count: 92, fast_hit_count: 0 */
+      continue; /* line 103 slow_hit_count: 92, fast_hit_count: 0 */
+    } /* line 104 slow_hit_count: 0, fast_hit_count: 0 */
+    if (s[i] == '-' || s[i] == '+' || s[i] == '*' || s[i] == '/') { /* line 105 slow_hit_count: 177, fast_hit_count: 5 */
+      op.push_back(s[i]); /* line 106 slow_hit_count: 20, fast_hit_count: 1 */
+      v.push_back(""); /* line 107 slow_hit_count: 20, fast_hit_count: 1 */
+      continue; /* line 108 slow_hit_count: 20, fast_hit_count: 1 */
+    } else { /* line 109 slow_hit_count: 0, fast_hit_count: 0 */
+      v.back() += s[i]; /* line 110 slow_hit_count: 157, fast_hit_count: 4 */
+    } /* line 111 slow_hit_count: 0, fast_hit_count: 0 */
+  } /* line 112 slow_hit_count: 0, fast_hit_count: 0 */
+  f2(v, op); /* line 113 slow_hit_count: 10, fast_hit_count: 1 */
+} /* line 114 slow_hit_count: 0, fast_hit_count: 0 */
+string deleteSpaces(const string& s) { /* line 115 slow_hit_count: 5, fast_hit_count: 2 */
+  string ans = ""; /* line 116 slow_hit_count: 5, fast_hit_count: 2 */
+  int n = static_cast<int>((s).size()); /* line 117 slow_hit_count: 5, fast_hit_count: 2 */
+  for (int i = 0; i < n; ++i) { /* line 118 slow_hit_count: 187, fast_hit_count: 11 */
+    if (s[i] != ' ') { /* line 119 slow_hit_count: 182, fast_hit_count: 9 */
+      ans += s[i]; /* line 120 slow_hit_count: 172, fast_hit_count: 8 */
+    } /* line 121 slow_hit_count: 0, fast_hit_count: 0 */
+  } /* line 122 slow_hit_count: 0, fast_hit_count: 0 */
+  return ans; /* line 123 slow_hit_count: 5, fast_hit_count: 2 */
+} /* line 124 slow_hit_count: 0, fast_hit_count: 0 */
+set<char> freeOp(const string& s) { /* line 125 slow_hit_count: 11, fast_hit_count: 1 */
+  string t = m[s]; /* line 126 slow_hit_count: 22, fast_hit_count: 2 */
+  set<char> ans; /* line 127 slow_hit_count: 11, fast_hit_count: 1 */
+  int balance = 0; /* line 128 slow_hit_count: 11, fast_hit_count: 1 */
+  int n = static_cast<int>((t).size()); /* line 129 slow_hit_count: 11, fast_hit_count: 1 */
+  for (int i = 0; i < n; ++i) { /* line 130 slow_hit_count: 344, fast_hit_count: 4 */
+    if (t[i] == '(') { /* line 131 slow_hit_count: 333, fast_hit_count: 3 */
+      ++balance; /* line 132 slow_hit_count: 0, fast_hit_count: 0 */
+      continue; /* line 133 slow_hit_count: 0, fast_hit_count: 0 */
+    } /* line 134 slow_hit_count: 0, fast_hit_count: 0 */
+    if (t[i] == ')') { /* line 135 slow_hit_count: 333, fast_hit_count: 3 */
+      --balance; /* line 136 slow_hit_count: 0, fast_hit_count: 0 */
+      continue; /* line 137 slow_hit_count: 0, fast_hit_count: 0 */
+    } /* line 138 slow_hit_count: 0, fast_hit_count: 0 */
+    if (!balance && /* line 139 slow_hit_count: 666, fast_hit_count: 6 */
+        (t[i] == '-' || t[i] == '+' || t[i] == '*' || t[i] == '/')) { /* line 140 slow_hit_count: 333, fast_hit_count: 3 */
+      ans.insert(t[i]); /* line 141 slow_hit_count: 11, fast_hit_count: 1 */
+    } /* line 142 slow_hit_count: 0, fast_hit_count: 0 */
+  } /* line 143 slow_hit_count: 0, fast_hit_count: 0 */
+  return ans; /* line 144 slow_hit_count: 22, fast_hit_count: 2 */
+} /* line 145 slow_hit_count: 0, fast_hit_count: 0 */
+bool check(const operation& o) { /* line 146 slow_hit_count: 20, fast_hit_count: 1 */
+  if (m.count(o.l)) { /* line 147 slow_hit_count: 20, fast_hit_count: 1 */
+    toCheck.insert(m[o.l]); /* line 148 slow_hit_count: 14, fast_hit_count: 1 */
+  } else { /* line 149 slow_hit_count: 0, fast_hit_count: 0 */
+    toCheck.insert(o.l); /* line 150 slow_hit_count: 6, fast_hit_count: 0 */
+  } /* line 151 slow_hit_count: 0, fast_hit_count: 0 */
+  if (m.count(o.r)) { /* line 152 slow_hit_count: 20, fast_hit_count: 1 */
+    toCheck.insert(m[o.r]); /* line 153 slow_hit_count: 7, fast_hit_count: 0 */
+  } else { /* line 154 slow_hit_count: 0, fast_hit_count: 0 */
+    toCheck.insert(o.r); /* line 155 slow_hit_count: 13, fast_hit_count: 1 */
+  } /* line 156 slow_hit_count: 0, fast_hit_count: 0 */
+  if (o.op == '+') { /* line 157 slow_hit_count: 20, fast_hit_count: 1 */
+    return true; /* line 158 slow_hit_count: 7, fast_hit_count: 0 */
+  } /* line 159 slow_hit_count: 0, fast_hit_count: 0 */
+  if (o.op == '-') { /* line 160 slow_hit_count: 13, fast_hit_count: 1 */
+    if (!m.count(o.r)) { /* line 161 slow_hit_count: 3, fast_hit_count: 0 */
+      return true; /* line 162 slow_hit_count: 2, fast_hit_count: 0 */
+    } /* line 163 slow_hit_count: 0, fast_hit_count: 0 */
+    set<char> sr = freeOp(o.r); /* line 164 slow_hit_count: 2, fast_hit_count: 0 */
+    if (sr.count('+') || sr.count('-')) { /* line 165 slow_hit_count: 1, fast_hit_count: 0 */
+      return false; /* line 166 slow_hit_count: 0, fast_hit_count: 0 */
+    } /* line 167 slow_hit_count: 0, fast_hit_count: 0 */
+    return true; /* line 168 slow_hit_count: 1, fast_hit_count: 0 */
+  } /* line 169 slow_hit_count: 0, fast_hit_count: 0 */
+  if (o.op == '*') { /* line 170 slow_hit_count: 10, fast_hit_count: 1 */
+    if (m.count(o.r)) { /* line 171 slow_hit_count: 7, fast_hit_count: 1 */
+      set<char> sr = freeOp(o.r); /* line 172 slow_hit_count: 4, fast_hit_count: 0 */
+      if (sr.count('+') || sr.count('-')) { /* line 173 slow_hit_count: 4, fast_hit_count: 0 */
+        return false; /* line 174 slow_hit_count: 0, fast_hit_count: 0 */
+      } /* line 175 slow_hit_count: 0, fast_hit_count: 0 */
+    } /* line 176 slow_hit_count: 0, fast_hit_count: 0 */
+    if (m.count(o.l)) { /* line 177 slow_hit_count: 7, fast_hit_count: 1 */
+      set<char> sl = freeOp(o.l); /* line 178 slow_hit_count: 4, fast_hit_count: 1 */
+      if (sl.count('+') || sl.count('-')) { /* line 179 slow_hit_count: 4, fast_hit_count: 1 */
+        return false; /* line 180 slow_hit_count: 0, fast_hit_count: 1 */
+      } /* line 181 slow_hit_count: 0, fast_hit_count: 0 */
+    } /* line 182 slow_hit_count: 0, fast_hit_count: 0 */
+    return true; /* line 183 slow_hit_count: 7, fast_hit_count: 0 */
+  } /* line 184 slow_hit_count: 0, fast_hit_count: 0 */
+  if (o.op == '/') { /* line 185 slow_hit_count: 3, fast_hit_count: 0 */
+    if (m.count(o.r)) { /* line 186 slow_hit_count: 3, fast_hit_count: 0 */
+      set<char> sr = freeOp(o.r); /* line 187 slow_hit_count: 0, fast_hit_count: 0 */
+      if (!sr.empty()) { /* line 188 slow_hit_count: 0, fast_hit_count: 0 */
+        return false; /* line 189 slow_hit_count: 0, fast_hit_count: 0 */
+      } /* line 190 slow_hit_count: 0, fast_hit_count: 0 */
+    } /* line 191 slow_hit_count: 0, fast_hit_count: 0 */
+    if (m.count(o.l)) { /* line 192 slow_hit_count: 3, fast_hit_count: 0 */
+      set<char> sl = freeOp(o.l); /* line 193 slow_hit_count: 2, fast_hit_count: 0 */
+      if (sl.count('+') || sl.count('-')) { /* line 194 slow_hit_count: 2, fast_hit_count: 0 */
+        return false; /* line 195 slow_hit_count: 0, fast_hit_count: 0 */
+      } /* line 196 slow_hit_count: 0, fast_hit_count: 0 */
+    } /* line 197 slow_hit_count: 0, fast_hit_count: 0 */
+    return true; /* line 198 slow_hit_count: 3, fast_hit_count: 0 */
+  } /* line 199 slow_hit_count: 0, fast_hit_count: 0 */
+} /* line 200 slow_hit_count: 0, fast_hit_count: 0 */
+int main() { /* line 201 slow_hit_count: 1, fast_hit_count: 1 */
+  int n; /* line 202 slow_hit_count: 0, fast_hit_count: 0 */
+  cin >> n; /* line 203 slow_hit_count: 1, fast_hit_count: 1 */
+  if (!n) { /* line 204 slow_hit_count: 1, fast_hit_count: 1 */
+    cout << "OK\n"; /* line 205 slow_hit_count: 0, fast_hit_count: 0 */
+    return 0; /* line 206 slow_hit_count: 0, fast_hit_count: 1 */
+  } /* line 207 slow_hit_count: 0, fast_hit_count: 0 */
+  for (int i = 0; i < n; ++i) { /* line 208 slow_hit_count: 5, fast_hit_count: 2 */
+    string def; /* line 209 slow_hit_count: 8, fast_hit_count: 2 */
+    cin >> def; /* line 210 slow_hit_count: 4, fast_hit_count: 1 */
+    if (def != "#define") { /* line 211 slow_hit_count: 4, fast_hit_count: 1 */
+      cin >> def; /* line 212 slow_hit_count: 0, fast_hit_count: 0 */
+    } /* line 213 slow_hit_count: 0, fast_hit_count: 0 */
+    string name; /* line 214 slow_hit_count: 8, fast_hit_count: 2 */
+    cin >> name; /* line 215 slow_hit_count: 4, fast_hit_count: 1 */
+    string val; /* line 216 slow_hit_count: 4, fast_hit_count: 1 */
+    getline(cin, val); /* line 217 slow_hit_count: 4, fast_hit_count: 1 */
+    m[name] = deleteSpaces(val); /* line 218 slow_hit_count: 4, fast_hit_count: 1 */
+  } /* line 219 slow_hit_count: 0, fast_hit_count: 0 */
+  string s; /* line 220 slow_hit_count: 1, fast_hit_count: 1 */
+  getline(cin, s); /* line 221 slow_hit_count: 1, fast_hit_count: 1 */
+  s = deleteSpaces(s); /* line 222 slow_hit_count: 1, fast_hit_count: 1 */
+  toCheck.insert(s); /* line 223 slow_hit_count: 1, fast_hit_count: 1 */
+  while (!toCheck.empty()) { /* line 224 slow_hit_count: 30, fast_hit_count: 1 */
+    operations.clear(); /* line 225 slow_hit_count: 29, fast_hit_count: 1 */
+    string tmp = *toCheck.begin(); /* line 226 slow_hit_count: 29, fast_hit_count: 1 */
+    if (checked.count(tmp)) { /* line 227 slow_hit_count: 29, fast_hit_count: 1 */
+      toCheck.erase(tmp); /* line 228 slow_hit_count: 9, fast_hit_count: 0 */
+      continue; /* line 229 slow_hit_count: 9, fast_hit_count: 0 */
+    } /* line 230 slow_hit_count: 0, fast_hit_count: 0 */
+    f3(tmp); /* line 231 slow_hit_count: 20, fast_hit_count: 1 */
+    for (int i = 0; i < static_cast<int>((operations).size()); ++i) { /* line 232 slow_hit_count: 40, fast_hit_count: 1 */
+      if (!check(operations[i])) { /* line 233 slow_hit_count: 20, fast_hit_count: 1 */
+        cout << "Suspicious\n"; /* line 234 slow_hit_count: 0, fast_hit_count: 1 */
+        return 0; /* line 235 slow_hit_count: 0, fast_hit_count: 1 */
+      } /* line 236 slow_hit_count: 0, fast_hit_count: 0 */
+    } /* line 237 slow_hit_count: 0, fast_hit_count: 0 */
+    toCheck.erase(tmp); /* line 238 slow_hit_count: 20, fast_hit_count: 0 */
+  } /* line 239 slow_hit_count: 0, fast_hit_count: 0 */
+  cout << "OK\n"; /* line 240 slow_hit_count: 1, fast_hit_count: 0 */
+} /* line 241 slow_hit_count: 1, fast_hit_count: 0 */
+
+
+assistant: To diagnose the performance bottlenecks in the given C program, let's follow the specified phases:
+
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+Based on the hit count information, we can identify the following points:
+
+1. **Function `f3`:** This function is called multiple times, particularly for the slow input. The loop from lines 60 to 71 and the recursion from line 77 contribute significantly to the slow performance, as seen from the high hit counts on lines 60, 61, 64, 67, and 77.
+
+2. **Function `f2`:** Lines within this function, particularly lines 24 to 28, indicate that the branches handling multiplication and division operators are exercised more frequently in the slow input, leading to higher hit counts.
+
+3. **Function `freeOp`:** This function is heavily called and has high hit counts on lines 130, 131, 135, and 139, suggesting repeated parsing of expressions and checking for operators.
+
+4. **Loop on Line 224 in `main`:** The while loop has a high hit count, indicating repeated iterations over the expressions to check and substitute macros.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+From the analysis above, we can derive the following performance-characterizing invariants:
+
+1. **Complex Macro Expressions:**
+   - Natural Language Invariant: "If macro expressions include complex nested operations (particularly multiplication and division) with multiple parentheses, the program may slow down due to the increased need for parsing and substitution."
+   - This reflects the high hit counts in functions `f3` and `f2`, where nested and complex expressions cause repeated parsing and recursive function calls.
+
+2. **Repeated Recursion on Expressions:**
+   - Natural Language Invariant: "When the expression depth or the number of nested macro substitutions is high, recursive calls and parsing can become a bottleneck, slowing down the execution."
+   - This is evident from the high hit counts in the function `f3`, which performs recursive operations on expressions.
+
+3. **Substitution and Operator Handling:**
+   - Natural Language Invariant: "Expressions with multiple arithmetic operators, especially with combinations of multiplication and division, can lead to inefficient parsing and substitution, thereby degrading performance."
+   - This invariant aligns with the increased hit count in functions handling operator precedence and substitution logic (`f2` and `check`).
+
+These invariants are broad enough to capture potential slow scenarios without tying to specific numeric values from the slow input, adhering to constraints like a maximum of 100 macros. They reflect realistic triggers for slowdowns given the program's logic and input constraints.
+
+user: (A) Context
+
+You have already:
+1. Identified expensive code segments (Phase 1).
+2. Derived performance-characterizing invariants in natural language (Phase 2).
+
+Now, you MUST transform these invariants into runtime checks and integrate them into the given C++ program.
+
+(B) Tasks: Revisit the performance-characteristic invariants you inferred in natural langauge and write faithful, error-free C++ code snippets to implement them
+
+You MUST do perform this task in two phases and provide separate answers for both: First, translating the invariants into checker code in C++ (phase 3, below). Second, integrating those checker C++ code snippets with the original program for which you inferred those invariants (phase 4, below).   
+
+Phase 3: Implement the natural language invariants inferred previously, in C++. In this phase you are asked to, 
+1. For each natural language invariant from Phase 2, you MUST produce C++ code that checks the condition at runtime.
+2. You MUST NOT relax or trivialize the checker code implementing these performance-characterizing invariants. You MUST faithfully implement them as described. 
+3. Use the following template for writing checker code in C++ which could also be implemented as a helper function:
+```cpp
+    if (/* condition based on the NL invariant */) {
+        cerr << "Warning: Performance bottleneck condition triggered!" << endl;
+        abort();
+    }
+``` 
+
+Note that not all performance-characterizing invariants are about maximising input size. You may refer to the following examples for inspiration --- some maximising the input size, some not --- but do not simply replicate them exactly. Rather, use them as inspiration to infer and tailor performance-characterizing invariants tailored for the C++ code and problem statement you were asked to analize:
+
+Example Invariant #1:
+
+A potential slowdown arises when certain arrays or lists grow large, causing repeated operations. One way to detect this is to check if the size of a critical array arr (used in a nested loop) exceeds a broad threshold.
+
+Natural language description: “If arr is very large and used in nested loops, the code may repeat operations too many times.”
+
+Code implementing the natural language description:
+
+```cpp
+// Sample checker function
+void check_size_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: size_invariant triggered - array too large for nested loops" << endl;
+        abort();
+    }
+}
+
+// Usage in main or function
+int arrSize = arr.size();
+check_size_invariant(arrSize > 50000);
+```
+
+Example Invariant #2:
+
+Repeated sorting or searching on a data structure can degrade performance, especially if the data structure is large or if the sorting is called multiple times in a loop.
+
+Natural language description: “If a large portion of the code’s execution time is spent in sorting a data structure repeatedly, performance may degrade. Check if the data structure is frequently resorted or reprocessed when it has many elements.”
+
+Code implementing the natural language description:
+
+```cpp
+void check_sort_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: sort_invariant triggered - repeatedly sorting large data" << endl;
+        abort();
+    }
+}
+
+// After reading input or before sorting
+int elementCount = someDataStructure.size();
+check_sort_invariant(elementCount > 100000 && /* some condition indicating repeated sorts */);
+```
+
+Example Invariant #3:
+
+Recursion (e.g., graph traversal or the iterative version of it, recurssive dynamic programming, recurssive computation like computing the next Fibonacci number, etc.) can become expensive if it explores a large search space. A sign of this might be a high branching factor combined with a deep recursion depth.
+
+Natural language description: “If the recursion depth is likely to exceed a certain level or if many branches are processed at each recursive call, the computation may become very expensive.”
+
+```cpp
+void check_dfs_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: dfs_invariant triggered - high recursion depth or branching factor" << endl;
+        abort();
+    }
+}
+
+// Before calling dfs or inside setup
+check_dfs_invariant((maxDepthEstimate > 50) && (branchFactorEstimate > 10));
+```
+
+Example Invariant #4:
+
+Memory usage spikes or large matrix operations can slow down computation if array dimensions become too large. If the program initializes a 2D array based on input dimensions n and m, certain input combinations can trigger large memory footprints or nested loops over the entire matrix.
+
+Natural language description: “If n and m together exceed a threshold that implies large matrix computations, the program may slow significantly.”
+
+```cpp
+void check_matrix_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: matrix_invariant triggered - potentially large matrix operations" << endl;
+        abort();
+    }
+}
+
+// After reading n, m
+check_matrix_invariant(n * m > 1000000);
+```
+
+Example invariant #5:
+
+If a program runs an expensive function or heavy-weight code (e.g. memory allocation) repeatedly within a performance-critical loop or function, the overhead for calling that function can accumulate, slowing the program significantly.
+
+Natural langauge description: "If function foo is an expensive function to execute, and is called a large number of times in a loop or recursive function, the program may slow down significantly"
+
+```cpp
+void check_expensive_function_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: expensive function invariant triggered - excessive calls" << endl;
+        abort();
+    }
+}
+
+check_expensive_function_invariant(n > 1000000);  // arbitrary, but large threshold
+for (i = 0; i < n; ++i) { 
+    foo(); // expensive function
+}
+```
+
+
+Phase 4: Propagate and insert conditional checks. In this phase you are asked to,
+1. Place each check at an effective point in the control/data flow (e.g., after reading inputs, before heavy loops) so you do not add overhead in tight loops. Note that the checker code could also be implemented as a helper function.
+2. If multiple checks overlap, merge or adjust them carefully to avoid redundant warnings.
+3. Provide the final, instrumented C++ code in code fences. Ensure it compiles cleanly and runs without errors.
+4. For each inserted check, add a short comment explaining which bottleneck it detects.
+
+Note the following important considerations when translating the inferred performance-characterizing invariants into code and propagating the checkers to the most efective program point by instrumenting the original code: 
+1. Avoid hardcoding. Don’t rely solely on the exact values from the provided slow input; think in terms of categories or thresholds that lead to slow execution.
+2. In addition to the warning message, remember to insert an "abort()" statement at the end of the checker.
+3. Focus on fuzzer utility. The checks should help a fuzzer detect slow performance triggers by hitting these conditions.
+
+As a refresher, below you are provided with the same program statement and C++ code for which you already inferred performance-characterizing invariants:
+
+Problem statement:
+Most C/C++ programmers know about excellent opportunities that preprocessor #define directives give; but many know as well about the problems that can arise because of their careless use.
+
+In this problem we consider the following model of #define constructions (also called macros). Each macro has its name and value. The generic syntax for declaring a macro is the following:
+
+#define macro_name macro_value
+
+After the macro has been declared, "macro_name" is replaced with "macro_value" each time it is met in the program (only the whole tokens can be replaced; i.e. "macro_name" is replaced only when it is surrounded by spaces or other non-alphabetic symbol). A "macro_value" within our model can only be an arithmetic expression consisting of variables, four arithmetic operations, brackets, and also the names of previously declared macros (in this case replacement is performed sequentially). The process of replacing macros with their values is called substitution.
+
+One of the main problems arising while using macros — the situation when as a result of substitution we get an arithmetic expression with the changed order of calculation because of different priorities of the operations.
+
+Let's consider the following example. Say, we declared such a #define construction:
+
+#define sum x + y
+
+and further in the program the expression "2 * sum" is calculated. After macro substitution is performed we get "2 * x + y", instead of intuitively expected "2 * (x + y)".
+
+Let's call the situation "suspicious", if after the macro substitution the order of calculation changes, falling outside the bounds of some macro. Thus, your task is to find out by the given set of #define definitions and the given expression if this expression is suspicious or not.
+
+Let's speak more formally. We should perform an ordinary macros substitution in the given expression. Moreover, we should perform a "safe" macros substitution in the expression, putting in brackets each macro value; after this, guided by arithmetic rules of brackets expansion, we can omit some of the brackets. If there exist a way to get an expression, absolutely coinciding with the expression that is the result of an ordinary substitution (character-by-character, but ignoring spaces), then this expression and the macros system are called correct, otherwise — suspicious.
+
+Note that we consider the "/" operation as the usual mathematical division, not the integer division like in C/C++. That's why, for example, in the expression "a*(b/c)" we can omit brackets to get the expression "a*b/c".
+
+Input
+
+The first line contains the only number n (0 ≤ n ≤ 100) — the amount of #define constructions in the given program.
+
+Then there follow n lines, each of them contains just one #define construction. Each construction has the following syntax:
+
+#define name expression
+
+where
+
+  * name — the macro name, 
+  * expression — the expression with which the given macro will be replaced. An expression is a non-empty string, containing digits,names of variables, names of previously declared macros, round brackets and operational signs +-*/. It is guaranteed that the expression (before and after macros substitution) is a correct arithmetic expression, having no unary operations. The expression contains only non-negative integers, not exceeding 109. 
+
+
+
+All the names (#define constructions' names and names of their arguments) are strings of case-sensitive Latin characters. It is guaranteed that the name of any variable is different from any #define construction.
+
+Then, the last line contains an expression that you are to check. This expression is non-empty and satisfies the same limitations as the expressions in #define constructions.
+
+The input lines may contain any number of spaces anywhere, providing these spaces do not break the word "define" or the names of constructions and variables. In particular, there can be any number of spaces before and after the "#" symbol.
+
+The length of any line from the input file does not exceed 100 characters.
+
+Output
+
+Output "OK", if the expression is correct according to the above given criterion, otherwise output "Suspicious".
+
+Examples
+
+Input
+
+1
+#define sum x + y
+1 * sum
+
+
+Output
+
+Suspicious
+
+
+Input
+
+1
+#define sum  (x + y)
+sum - sum
+
+
+Output
+
+OK
+
+
+Input
+
+4
+#define sum  x + y
+#define mul  a * b
+#define div  a / b
+#define expr sum + mul * div * mul
+expr
+
+
+Output
+
+OK
+
+
+Input
+
+3
+#define SumSafe   (a+b)
+#define DivUnsafe  a/b
+#define DenominatorUnsafe  a*b
+((SumSafe) + DivUnsafe/DivUnsafe + x/DenominatorUnsafe)
+
+
+Output
+
+Suspicious
+
+Solution (C++ code):
+{solution}
+
+
+assistant: ### Phase 3: Implement the Natural Language Invariants in C++
+
+For each performance-characterizing invariant derived in Phase 2, we will implement a corresponding runtime checker in C++.
+
+1. **Complex Macro Expressions:**
+   ```cpp
+   void check_complex_macro_expression(bool condition) {
+       if (condition) {
+           cerr << "Warning: Performance bottleneck condition triggered - complex macro expressions detected!" << endl;
+           abort();
+       }
+   }
+   ```
+
+2. **Repeated Recursion on Expressions:**
+   ```cpp
+   void check_recursion_depth(bool condition) {
+       if (condition) {
+           cerr << "Warning: Performance bottleneck condition triggered - high recursion depth!" << endl;
+           abort();
+       }
+   }
+   ```
+
+3. **Substitution and Operator Handling:**
+   ```cpp
+   void check_operator_handling(bool condition) {
+       if (condition) {
+           cerr << "Warning: Performance bottleneck condition triggered - complex operator handling!" << endl;
+           abort();
+       }
+   }
+   ```
+
+### Phase 4: Integrate the Checker Code into the Original Program
+
+Below is the instrumented C++ code with the integrated runtime checks. The checks are placed strategically to minimize overhead and detect performance bottlenecks effectively.
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+struct operation {
+    string l, r;
+    char op;
+};
+
+vector<operation> operations;
+set<string> toCheck;
+map<string, string> m;
+set<string> checked;
+
+// Function to check complex macro expressions
+void check_complex_macro_expression(bool condition) {
+    if (condition) {
+        cerr << "Warning: Performance bottleneck condition triggered - complex macro expressions!" << endl;
+        abort();
+    }
+}
+
+// Function to check recursion depth
+void check_recursion_depth(bool condition) {
+    if (condition) {
+        cerr << "Warning: Performance bottleneck condition triggered - high recursion depth!" << endl;
+        abort();
+    }
+}
+
+// Function to check operator handling
+void check_operator_handling(bool condition) {
+    if (condition) {
+        cerr << "Warning: Performance bottleneck condition triggered - complex operator handling!" << endl;
+        abort();
+    }
+}
+
+void f1(const vector<string>& v, const vector<char>& op) {
+    int n = static_cast<int>((v).size());
+    for (int i = 0; i < n - 1; ++i) {
+        operations.push_back({v[0], v[i + 1], op[i]});
+    }
+}
+
+void f3(const string& s);
+
+void f2(const vector<string>& v, const vector<char>& op) {
+    vector<string> newV;
+    vector<char> newOp;
+    vector<string> currV;
+    vector<char> currOp;
+    string curr = v[0];
+    currV.push_back(v[0]);
+    int n = static_cast<int>((v).size());
+    for (int i = 0; i < n - 1; ++i) {
+        if (op[i] == '*' || op[i] == '/') {
+            curr += op[i];
+            curr += v[i + 1];
+            currV.push_back(v[i + 1]);
+            currOp.push_back(op[i]);
+        } else {
+            newV.push_back(curr);
+            curr = v[i + 1];
+            newOp.push_back(op[i]);
+            if (!currOp.empty()) {
+                f1(currV, currOp);
+            }
+            currV = {v[i + 1]};
+            currOp.clear();
+        }
+    }
+    newV.push_back(curr);
+    if (!currOp.empty()) {
+        f1(currV, currOp);
+    }
+    for (int i = 0; i < static_cast<int>((newV).size()) - 1; ++i) {
+        operations.push_back({newV[0], newV[i + 1], newOp[i]});
+    }
+}
+
+void f3(const string& s) {
+    checked.insert(s);
+    int n = static_cast<int>((s).size());
+
+    // Check recursion depth and complexity
+    check_recursion_depth(n > 50);  // Example arbitrary threshold for recursion depth
+
+    if (m.count(s)) {
+        toCheck.insert(m[s]);
+        return;
+    }
+    int balance = 0;
+    bool inPar = true;
+    for (int i = 0; i < n; ++i) {
+        if (s[i] == '(') {
+            ++balance;
+        }
+        if (s[i] == ')') {
+            --balance;
+        }
+        if ((i != n - 1 && !balance) || static_cast<int>((s).size()) == 1) {
+            inPar = false;
+            break;
+        }
+    }
+    if (inPar) {
+        string t = "";
+        for (int i = 1; i < n - 1; ++i) {
+            t += s[i];
+        }
+        f3(t);
+        return;
+    }
+    bool ops = false;
+    for (int i = 0; i < n; ++i) {
+        if (s[i] == '-' || s[i] == '+' || s[i] == '*' || s[i] == '/') {
+            ops = true;
+            break;
+        }
+    }
+    if (!ops) {
+        return;
+    }
+    vector<string> v;
+    v.push_back("");
+    vector<char> op;
+    balance = 0;
+    for (int i = 0; i < n; ++i) {
+        if (s[i] == '(') {
+            ++balance;
+        }
+        if (s[i] == ')') {
+            --balance;
+        }
+        if (balance || s[i] == ')') {
+            v.back() += s[i];
+            continue;
+        }
+        if (s[i] == '-' || s[i] == '+' || s[i] == '*' || s[i] == '/') {
+            op.push_back(s[i]);
+            v.push_back("");
+            continue;
+        } else {
+            v.back() += s[i];
+        }
+    }
+
+    // Check operator handling complexity
+    check_operator_handling(op.size() > 10);  // Example arbitrary threshold for operator complexity
+
+    f2(v, op);
+}
+
+string deleteSpaces(const string& s) {
+    string ans = "";
+    int n = static_cast<int>((s).size());
+    for (int i = 0; i < n; ++i) {
+        if (s[i] != ' ') {
+            ans += s[i];
+        }
+    }
+    return ans;
+}
+
+set<char> freeOp(const string& s) {
+    string t = m[s];
+    set<char> ans;
+    int balance = 0;
+    int n = static_cast<int>((t).size());
+    for (int i = 0; i < n; ++i) {
+        if (t[i] == '(') {
+            ++balance;
+            continue;
+        }
+        if (t[i] == ')') {
+            --balance;
+            continue;
+        }
+        if (!balance &&
+            (t[i] == '-' || t[i] == '+' || t[i] == '*' || t[i] == '/')) {
+            ans.insert(t[i]);
+        }
+    }
+    return ans;
+}
+
+bool check(const operation& o) {
+    if (m.count(o.l)) {
+        toCheck.insert(m[o.l]);
+    } else {
+        toCheck.insert(o.l);
+    }
+    if (m.count(o.r)) {
+        toCheck.insert(m[o.r]);
+    } else {
+        toCheck.insert(o.r);
+    }
+    if (o.op == '+') {
+        return true;
+    }
+    if (o.op == '-') {
+        if (!m.count(o.r)) {
+            return true;
+        }
+        set<char> sr = freeOp(o.r);
+        if (sr.count('+') || sr.count('-')) {
+            return false;
+        }
+        return true;
+    }
+    if (o.op == '*') {
+        if (m.count(o.r)) {
+            set<char> sr = freeOp(o.r);
+            if (sr.count('+') || sr.count('-')) {
+                return false;
+            }
+        }
+        if (m.count(o.l)) {
+            set<char> sl = freeOp(o.l);
+            if (sl.count('+') || sl.count('-')) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (o.op == '/') {
+        if (m.count(o.r)) {
+            set<char> sr = freeOp(o.r);
+            if (!sr.empty()) {
+                return false;
+            }
+        }
+        if (m.count(o.l)) {
+            set<char> sl = freeOp(o.l);
+            if (sl.count('+') || sl.count('-')) {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+int main() {
+    int n;
+    cin >> n;
+    if (!n) {
+        cout << "OK\n";
+        return 0;
+    }
+    for (int i = 0; i < n; ++i) {
+        string def;
+        cin >> def;
+        if (def != "#define") {
+            cin >> def;
+        }
+        string name;
+        cin >> name;
+        string val;
+        getline(cin, val);
+        m[name] = deleteSpaces(val);
+
+        // Check complex macro expressions
+        check_complex_macro_expression(m[name].size() > 30);  // Example arbitrary threshold for macro complexity
+    }
+    string s;
+    getline(cin, s);
+    s = deleteSpaces(s);
+    toCheck.insert(s);
+    while (!toCheck.empty()) {
+        operations.clear();
+        string tmp = *toCheck.begin();
+        if (checked.count(tmp)) {
+            toCheck.erase(tmp);
+            continue;
+        }
+        f3(tmp);
+        for (int i = 0; i < static_cast<int>((operations).size()); ++i) {
+            if (!check(operations[i])) {
+                cout << "Suspicious\n";
+                return 0;
+            }
+        }
+        toCheck.erase(tmp);
+    }
+    cout << "OK\n";
+}
+
+```
+
+**Explanation of Check Placements:**
+
+- **Complex Macro Expression Check:** Placed after reading a macro definition to ensure macro expressions don't get excessively complex.
+- **Recursion Depth Check:** Added in `f3` before recursion to prevent deep recursion, which could slow down the program.
+- **Operator Handling Check:** Placed in `f3` after operator handling logic to catch expressions with excessive operators, leading to slow parsing or substitution. 
+
+This code should now identify potential performance bottlenecks during execution and help with debugging or optimizing the program.
+

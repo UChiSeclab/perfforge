@@ -1,0 +1,267 @@
+=== Invariants Response ===
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+Upon analyzing the hit counts and code execution paths for both the slow and fast inputs, here's a summary of the findings:
+
+1. **Function `dp(string s)`**: This function gets significantly more calls under the slow input (38 vs 6), indicating it is a potential bottleneck. Within this function:
+   - The loop iterating over characters of the string (lines 7-8) shows a marked increase in hit counts for the slow input, suggesting longer strings or more complex expressions are processed.
+   - The logic around stack operations (lines 20-36) also exhibits much higher hit counts in the slow input, indicating more frequent manipulation of arithmetic operators and parentheses.
+   
+2. **Character Handling (Lines 13-19)**: These lines determine if a string contains an operator. Higher hit counts suggest that the slow input involves more complex expressions with numerous operators.
+   
+3. **Stack operations in lines 49-57**: The sorting of operators and operands also shows increased activity, which indicates complex arithmetic expressions leading to costly stack operations.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+Based on the identified inefficiencies, here are the performance-characterizing invariants that describe conditions under which the code slows down:
+
+1. **Complex Arithmetic Expressions**:
+   - **Invariant**: When the input expression has a high density of arithmetic operators interspersed with variables or macros, it can lead to increased recursion and stack operations.
+   - **Natural Language**: "If the arithmetic expression contains numerous operators mixed with variables and macros, particularly in dense clusters, the program may slow down due to extensive parsing and evaluation."
+
+2. **Deep Nesting and Bracketing**:
+   - **Invariant**: When there are deeply nested parentheses within the expression, the stack operations and push/pop actions become more frequent, causing performance to degrade.
+   - **Natural Language**: "If expressions are deeply nested with multiple layers of parentheses, the algorithm may experience slowdowns due to the added complexity in stack management and operator precedence resolution."
+
+3. **Repeated Macro Expansions**:
+   - **Invariant**: When macros are expanded into complex sub-expressions that themselves contain other macros or operators, performance may suffer due to repetitive expansion steps.
+   - **Natural Language**: "If macro expansion results in sub-expressions that need further expansion, especially if these sub-expressions involve additional operators, the substitution and evaluation process may become computationally intensive."
+
+4. **Long Expressions with Multiple Subcomponents**:
+   - **Invariant**: Expressions that are notably longer or contain multiple subcomponents separated by operators can lead to repeated evaluations and slow overall processing.
+   - **Natural Language**: "When expressions are particularly long and consist of multiple interdependent subcomponents, the program may slow due to repeated evaluations and increased parsing complexity."
+
+By observing these invariants, developers can anticipate performance bottlenecks and optimize macro substitution and expression evaluation in the code.
+
+=== Checker Response ===
+### Phase 3: Implementing the Natural Language Invariants in C++
+
+Below are the C++ checker functions based on the performance-characterizing invariants identified in Phase 2:
+
+1. **Complex Arithmetic Expressions**:
+   ```cpp
+   // Check for a high density of operators within a single expression
+   void check_complex_expression(const std::string& expr) {
+       int operatorCount = 0;
+       int length = expr.length();
+       for (char c : expr) {
+           if (c == '+' || c == '-' || c == '*' || c == '/') {
+               operatorCount++;
+           }
+       }
+       // Example threshold: if more than 10% of the characters are operators
+       if (operatorCount > 0.1 * length) {
+           cerr << "Warning: Performance bottleneck - complex arithmetic expression detected!" << endl;
+           abort();
+       }
+   }
+   ```
+
+2. **Deep Nesting and Bracketing**:
+   ```cpp
+   // Check for deeply nested parentheses
+   void check_deep_nesting(const std::string& expr) {
+       int maxDepth = 0;
+       int currentDepth = 0;
+       for (char c : expr) {
+           if (c == '(') {
+               currentDepth++;
+               if (currentDepth > maxDepth) {
+                   maxDepth = currentDepth;
+               }
+           } else if (c == ')') {
+               currentDepth--;
+           }
+       }
+       // Example threshold: if the nesting depth exceeds 5
+       if (maxDepth > 5) {
+           cerr << "Warning: Performance bottleneck - deep nesting detected!" << endl;
+           abort();
+       }
+   }
+   ```
+
+3. **Repeated Macro Expansions**:
+   ```cpp
+   // Check for repeated macro expansions in a single expression
+   void check_repeated_macro_expansion(const map<string, int>& macroUsageCount) {
+       for (const auto& [macro, count] : macroUsageCount) {
+           // Example threshold: if a macro is used more than 5 times
+           if (count > 5) {
+               cerr << "Warning: Performance bottleneck - repeated macro expansion detected!" << endl;
+               abort();
+           }
+       }
+   }
+   ```
+
+4. **Long Expressions with Multiple Subcomponents**:
+   ```cpp
+   // Check for long expressions with many subcomponents
+   void check_long_expression(const std::string& expr) {
+       int subcomponentCount = 0;
+       size_t pos = 0;
+       while ((pos = expr.find_first_of("+-*/", pos)) != std::string::npos) {
+           subcomponentCount++;
+           pos++;
+       }
+       // Example threshold: more than 10 subcomponents
+       if (subcomponentCount > 10) {
+           cerr << "Warning: Performance bottleneck - long expression with many subcomponents detected!" << endl;
+           abort();
+       }
+   }
+   ```
+
+### Phase 4: Integrating Checks into the Program
+
+Here is the modified C++ program with the checker functions integrated. Note that I will place the checks at strategic points to minimize overhead.
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+// Checker functions
+void check_complex_expression(const std::string& expr);
+void check_deep_nesting(const std::string& expr);
+void check_repeated_macro_expansion(const map<string, int>& macroUsageCount);
+void check_long_expression(const std::string& expr);
+
+map<string, int> Dp;
+set<string> DEF;
+inline int dp(string s) {
+    string TMP = "";
+    for (int i = 0; i < (int)s.length(); ++i)
+        if (s[i] != ' ') TMP.push_back(s[i]);
+    s = TMP;
+    string bak = s;
+
+    // Performance check: complex expression
+    check_complex_expression(s);
+    check_deep_nesting(s);
+    check_long_expression(s);
+
+    if (Dp.find(s) != Dp.end()) return Dp[s];
+    bool FLAG = true;
+    for (int i = 0; i < (int)s.length(); ++i) {
+        if ((s[i] == '+' || s[i] == '-' || s[i] == '*' || s[i] == '/')) {
+            FLAG = false;
+            break;
+        }
+    }
+    if (FLAG) return Dp[s] = 1;
+    stack<pair<char, int> > sta;
+    while (!sta.empty()) sta.pop();
+    for (int i = 0; i < (int)s.length(); ++i) {
+        if (s[i] == ')') {
+            char Tmp;
+            do {
+                Tmp = sta.top().first;
+                sta.pop();
+            } while (Tmp != '(');
+            sta.push(make_pair('1', i));
+        } else if ((isalpha(s[i]) || isdigit(s[i])) &&
+                   (sta.empty() ||
+                    !(isalpha(sta.top().first) || isdigit(sta.top().first))))
+            sta.push(make_pair(s[i], i));
+        else if ((s[i] == '+' || s[i] == '-' || s[i] == '*' || s[i] == '/') ||
+                 s[i] == '(')
+            sta.push(make_pair(s[i], i));
+    }
+    if (sta.size() == 1) {
+        s = s.substr(1, s.length() - 2);
+        return Dp[bak] = (dp(s) == 2 ? 2 : 1);
+    }
+    stack<pair<char, int> > str_sta;
+    while (!str_sta.empty()) str_sta.pop();
+    while (!sta.empty()) {
+        str_sta.push(sta.top());
+        sta.pop();
+    }
+    int last_place = 0;
+    while (!str_sta.empty()) {
+        pair<char, int> now = str_sta.top();
+        str_sta.pop();
+        if ((isalpha(now.first) || isdigit(now.first))) {
+            if (!sta.empty() && (sta.top().first == '*' || sta.top().first == '/')) {
+                last_place = sta.top().second;
+                sta.pop();
+            } else
+                sta.push(now);
+        } else if ((now.first == '+' || now.first == '-' || now.first == '*' ||
+                    now.first == '/'))
+            sta.push(now);
+    }
+    while (!sta.empty()) {
+        if ((sta.top().first == '+' || sta.top().first == '-' ||
+             sta.top().first == '*' || sta.top().first == '/')) {
+            last_place = sta.top().second;
+            break;
+        }
+        sta.pop();
+    }
+    int L = 0, R = 0;
+    if ((L = dp(bak.substr(0, last_place))) == 2 ||
+        (R = dp(bak.substr(last_place + 1))) == 2)
+        return Dp[bak] = 2;
+    switch (bak[last_place]) {
+        case '+':
+            return Dp[bak] = 3;
+        case '-':
+            if (R == 3)
+                return Dp[bak] = 2;
+            else
+                return Dp[bak] = 3;
+        case '*':
+            if (L == 3 || R == 3)
+                return Dp[bak] = 2;
+            else
+                return 4;
+        case '/':
+            if (L == 3 || R == 3 || R == 4)
+                return Dp[bak] = 2;
+            else
+                return 4;
+    }
+    return 0;
+}
+
+int main() {
+    int n;
+    cin >> n;
+    Dp.clear();
+    DEF.clear();
+    string a;
+    getline(cin, a);
+    map<string, int> macroUsageCount;
+    for (int i = 1; i <= n; ++i) {
+        string def, defa;
+        while (cin >> def && def != "define" && def != "#define");
+        cin >> defa;
+        if (DEF.count(defa)) {
+            puts("Suspicious");
+            return 0;
+        }
+        getline(cin, a);
+        Dp[defa] = dp(a);
+        DEF.insert(defa);
+        macroUsageCount[defa]++;
+    }
+    
+    // Performance check: repeated macro expansion
+    check_repeated_macro_expansion(macroUsageCount);
+
+    getline(cin, a);
+    if (dp(a) == 2)
+        puts("Suspicious");
+    else
+        puts("OK");
+    return 0;
+}
+```
+
+### Explanation
+
+- The checker functions are implemented to detect the described performance bottlenecks.
+- Each checker function is called at a point in the code where it can accurately assess the potential slowdown conditions without adding significant runtime overhead.
+- The program has been instrumented to abort execution if any performance bottleneck condition is detected, aiding in debugging and optimizing the code.

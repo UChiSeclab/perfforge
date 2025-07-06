@@ -1,0 +1,857 @@
+system: You are a helpful assistant good at coding.
+
+user: (A) Context
+
+You are an experienced C software engineer focusing on performance bottlenecks. You have:
+1. A problem statement describing a task or algorithm (with constraints such as n <= 100).
+2. A C program that implements a solution to that problem.
+3. Two inputs: a “fast” input that completes quickly, and a “slow” input that takes much longer—both inputs have similar size/structure.
+4. Line-level hit counts for both runs, showing which lines get hit significantly more often on the slow input.
+
+Your goal is to diagnose why the program runs slowly for the slow input and derive conditions or invariants that capture what triggers this slowdown.
+
+(B) Tasks: Analyze the given code and generate performance-characterizing invariants in natural language
+
+Phase 1: Identify expensive or onefficient code segments. In this phase you are asked to,
+1. Compare line-level hit counts between the fast and slow runs.
+2. Pinpoint lines or functions that get significantly more hits under the slow input.
+3. Infer how these lines might be interacting with data structures, loops, recursion, etc., especially as they relate to the input constraints (e.g., n <= 100).
+
+Phase 2: Derive performance-characterizing invariants (natural language). In this phase you are asked to,
+1. Generate natural language statements that describe conditions under which the program likely enters a slow path.
+2. Avoid using specific numeric values from the slow input; abstract them into categories or thresholds. However, make sure those thresholds adhere to the input constraints of the problem.
+3. Correlate these conditions strongly to input patterns (e.g., “when n is close to 100 and there is a nested loop,” or “when a data structure is repeatedly sorted”).
+4. Ensure your statements are broad enough to catch possible future slow scenarios, but still reflect realistic triggers given the constraints (like n <= 100).
+
+Note that not all performance-characterizing invariants are about maximising input size. You may refer to the following examples for inspiration --- some maximising the input size, some not --- but do not simply replicate them exactly. Rather, use them as inspiration to infer and tailor performance-characterizing invariants tailored for the C code and problem statement you were asked to analize:
+
+Example Invariant #1:
+
+A potential slowdown arises when certain arrays or lists grow large, causing repeated operations. One way to detect this is to check if the size of a critical array arr (used in a nested loop) exceeds a broad threshold.
+
+Natural language description: “If arr is very large and used in nested loops, the code may repeat operations too many times.”
+
+Code implementing the natural language description:
+
+```cpp
+// Sample checker function
+void check_size_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: size_invariant triggered - array too large for nested loops" << endl;
+        abort();
+    }
+}
+
+// Usage in main or function
+int arrSize = arr.size();
+check_size_invariant(arrSize > 50000);
+```
+
+Example Invariant #2:
+
+Repeated sorting or searching on a data structure can degrade performance, especially if the data structure is large or if the sorting is called multiple times in a loop.
+
+Natural language description: “If a large portion of the code’s execution time is spent in sorting a data structure repeatedly, performance may degrade. Check if the data structure is frequently resorted or reprocessed when it has many elements.”
+
+Code implementing the natural language description:
+
+```cpp
+void check_sort_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: sort_invariant triggered - repeatedly sorting large data" << endl;
+        abort();
+    }
+}
+
+// After reading input or before sorting
+int elementCount = someDataStructure.size();
+check_sort_invariant(elementCount > 100000 && /* some condition indicating repeated sorts */);
+```
+
+Example Invariant #3:
+
+Recursion (e.g., graph traversal or the iterative version of it, recurssive dynamic programming, recurssive computation like computing the next Fibonacci number, etc.) can become expensive if it explores a large search space. A sign of this might be a high branching factor combined with a deep recursion depth.
+
+Natural language description: “If the recursion depth is likely to exceed a certain level or if many branches are processed at each recursive call, the computation may become very expensive.”
+
+```cpp
+void check_dfs_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: dfs_invariant triggered - high recursion depth or branching factor" << endl;
+        abort();
+    }
+}
+
+// Before calling dfs or inside setup
+check_dfs_invariant((maxDepthEstimate > 50) && (branchFactorEstimate > 10));
+```
+
+Example Invariant #4:
+
+Memory usage spikes or large matrix operations can slow down computation if array dimensions become too large. If the program initializes a 2D array based on input dimensions n and m, certain input combinations can trigger large memory footprints or nested loops over the entire matrix.
+
+Natural language description: “If n and m together exceed a threshold that implies large matrix computations, the program may slow significantly.”
+
+```cpp
+void check_matrix_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: matrix_invariant triggered - potentially large matrix operations" << endl;
+        abort();
+    }
+}
+
+// After reading n, m
+check_matrix_invariant(n * m > 1000000);
+```
+
+Example invariant #5:
+
+If a program runs an expensive function or heavy-weight code (e.g. memory allocation) repeatedly within a performance-critical loop or function, the overhead for calling that function can accumulate, slowing the program significantly.
+
+Natural langauge description: "If function foo is an expensive function to execute, and is called a large number of times in a loop or recursive function, the program may slow down significantly"
+
+```cpp
+void check_expensive_function_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: expensive function invariant triggered - excessive calls" << endl;
+        abort();
+    }
+}
+
+check_expensive_function_invariant(n > 1000000);  // arbitrary, but large threshold
+for (i = 0; i < n; ++i) { 
+    foo(); // expensive function
+}
+```
+
+(C) Output Requirements
+1. Provide a list of natural language performance invariants explaining under what conditions the code slows down.
+2. Do not mention or rely on exact values from the provided slow input.
+3. Use or suggest threshold values that align with problem constraints (e.g., n <= 100).
+4. The output should be a concise, descriptive set of statements about performance triggers.
+
+(D) Important Considerations
+1. Avoid hardcoding. Don’t rely solely on the exact values from the provided slow input; think in terms of categories or thresholds that lead to slow execution.
+2. Avoid checks inside tight loops. Place checks in a way that does not significantly degrade performance.
+3. Focus on fuzzer utility. The checks should help a fuzzer detect slow performance triggers by hitting these conditions.
+
+(E) Problem Statement
+
+Most C/C++ programmers know about excellent opportunities that preprocessor #define directives give; but many know as well about the problems that can arise because of their careless use.
+
+In this problem we consider the following model of #define constructions (also called macros). Each macro has its name and value. The generic syntax for declaring a macro is the following:
+
+#define macro_name macro_value
+
+After the macro has been declared, "macro_name" is replaced with "macro_value" each time it is met in the program (only the whole tokens can be replaced; i.e. "macro_name" is replaced only when it is surrounded by spaces or other non-alphabetic symbol). A "macro_value" within our model can only be an arithmetic expression consisting of variables, four arithmetic operations, brackets, and also the names of previously declared macros (in this case replacement is performed sequentially). The process of replacing macros with their values is called substitution.
+
+One of the main problems arising while using macros — the situation when as a result of substitution we get an arithmetic expression with the changed order of calculation because of different priorities of the operations.
+
+Let's consider the following example. Say, we declared such a #define construction:
+
+#define sum x + y
+
+and further in the program the expression "2 * sum" is calculated. After macro substitution is performed we get "2 * x + y", instead of intuitively expected "2 * (x + y)".
+
+Let's call the situation "suspicious", if after the macro substitution the order of calculation changes, falling outside the bounds of some macro. Thus, your task is to find out by the given set of #define definitions and the given expression if this expression is suspicious or not.
+
+Let's speak more formally. We should perform an ordinary macros substitution in the given expression. Moreover, we should perform a "safe" macros substitution in the expression, putting in brackets each macro value; after this, guided by arithmetic rules of brackets expansion, we can omit some of the brackets. If there exist a way to get an expression, absolutely coinciding with the expression that is the result of an ordinary substitution (character-by-character, but ignoring spaces), then this expression and the macros system are called correct, otherwise — suspicious.
+
+Note that we consider the "/" operation as the usual mathematical division, not the integer division like in C/C++. That's why, for example, in the expression "a*(b/c)" we can omit brackets to get the expression "a*b/c".
+
+Input
+
+The first line contains the only number n (0 ≤ n ≤ 100) — the amount of #define constructions in the given program.
+
+Then there follow n lines, each of them contains just one #define construction. Each construction has the following syntax:
+
+#define name expression
+
+where
+
+  * name — the macro name, 
+  * expression — the expression with which the given macro will be replaced. An expression is a non-empty string, containing digits,names of variables, names of previously declared macros, round brackets and operational signs +-*/. It is guaranteed that the expression (before and after macros substitution) is a correct arithmetic expression, having no unary operations. The expression contains only non-negative integers, not exceeding 109. 
+
+
+
+All the names (#define constructions' names and names of their arguments) are strings of case-sensitive Latin characters. It is guaranteed that the name of any variable is different from any #define construction.
+
+Then, the last line contains an expression that you are to check. This expression is non-empty and satisfies the same limitations as the expressions in #define constructions.
+
+The input lines may contain any number of spaces anywhere, providing these spaces do not break the word "define" or the names of constructions and variables. In particular, there can be any number of spaces before and after the "#" symbol.
+
+The length of any line from the input file does not exceed 100 characters.
+
+Output
+
+Output "OK", if the expression is correct according to the above given criterion, otherwise output "Suspicious".
+
+Examples
+
+Input
+
+1
+#define sum x + y
+1 * sum
+
+
+Output
+
+Suspicious
+
+
+Input
+
+1
+#define sum  (x + y)
+sum - sum
+
+
+Output
+
+OK
+
+
+Input
+
+4
+#define sum  x + y
+#define mul  a * b
+#define div  a / b
+#define expr sum + mul * div * mul
+expr
+
+
+Output
+
+OK
+
+
+Input
+
+3
+#define SumSafe   (a+b)
+#define DivUnsafe  a/b
+#define DenominatorUnsafe  a*b
+((SumSafe) + DivUnsafe/DivUnsafe + x/DenominatorUnsafe)
+
+
+Output
+
+Suspicious
+
+(F) Program Solving the Problem Statement
+
+#include <bits/stdc++.h>
+using namespace std;
+map<string, int> ma;
+int n;
+string s;
+char ss[100000];
+int work(int l, int r) {
+  int i, zz = 0;
+  for (i = r; i > l; i--) {
+    if (s[i] == '(')
+      zz++;
+    else if (s[i] == ')')
+      zz--;
+    else if ((s[i] == '+' || s[i] == '-') && zz == 0) {
+      int ll = work(l, i - 1);
+      int rr = work(i + 1, r);
+      if (ll == 4 || rr == 4 || (s[i] == '-' && rr == 3))
+        return 4;
+      else
+        return 3;
+    }
+  }
+  zz = 0;
+  for (i = r; i > l; i--) {
+    if (s[i] == '(')
+      zz++;
+    else if (s[i] == ')')
+      zz--;
+    else if ((s[i] == '*' || s[i] == '/') && zz == 0) {
+      int ll = work(l, i - 1);
+      int rr = work(i + 1, r);
+      if (ll == 4 || rr == 4 || ll == 3 || rr == 3 || (s[i] == '/' && rr == 2))
+        return 4;
+      else
+        return 2;
+    }
+  }
+  if (s[l] == '(') return ((work(l + 1, r - 1) == 4) ? 4 : 1);
+  string sa;
+  sa = "";
+  for (i = l; i <= r; i++) sa = sa + s[i];
+  if (ma[sa] == 0) {
+    ma[sa] = 1;
+    return (1);
+  } else
+    return ma[sa];
+}
+int main() {
+  cin >> n;
+  int i, j;
+  gets(ss);
+  for (i = 1; i <= n; i++) {
+    string sa = s = "";
+    cin >> sa;
+    if (sa.length() != 7) cin >> sa;
+    cin >> sa;
+    gets(ss);
+    for (j = 0; ss[j]; j++)
+      if (ss[j] != ' ') s = s + ss[j];
+    ma[sa] = work(0, s.length() - 1);
+  }
+  s = "";
+  gets(ss);
+  for (i = 0; ss[i]; i++)
+    if (ss[i] != ' ') s = s + ss[i];
+  if (work(0, s.length() - 1) != 4)
+    printf("OK\n");
+  else
+    printf("Suspicious\n");
+}
+
+
+(G) The Slow & Fast Inputs
+
+(G.1) Slow Input
+
+4
+#define sum   xx+yy
+#define difference  aaaa-bbbBBBB
+#define mult   a*b
+#define division  aaaaaaaaaaaaaaaaaaaaa/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+sum+difference+(sum)*(difference)-mult+mult*division+division*mult+division/(mult+sum-(difference))
+
+
+(G.2) Fast Input
+
+1
+#define sum x+y
+sum+r
+
+
+(H) Hit Count Information of Slow Input and Fast Input (Aggregated):
+
+#include <bits/stdc++.h> /* line 1 slow_hit_count: 0, fast_hit_count: 0 */
+using namespace std; /* line 2 slow_hit_count: 0, fast_hit_count: 0 */
+map<string, int> ma; /* line 3 slow_hit_count: 0, fast_hit_count: 0 */
+int n; /* line 4 slow_hit_count: 0, fast_hit_count: 0 */
+string s; /* line 5 slow_hit_count: 0, fast_hit_count: 0 */
+char ss[100000]; /* line 6 slow_hit_count: 0, fast_hit_count: 0 */
+int work(int l, int r) { /* line 7 slow_hit_count: 41, fast_hit_count: 6 */
+  int i, zz = 0; /* line 8 slow_hit_count: 41, fast_hit_count: 6 */
+  for (i = r; i > l; i--) { /* line 9 slow_hit_count: 456, fast_hit_count: 10 */
+    if (s[i] == '(') /* line 10 slow_hit_count: 425, fast_hit_count: 6 */
+      zz++; /* line 11 slow_hit_count: 9, fast_hit_count: 0 */
+    else if (s[i] == ')') /* line 12 slow_hit_count: 416, fast_hit_count: 6 */
+      zz--; /* line 13 slow_hit_count: 14, fast_hit_count: 0 */
+    else if ((s[i] == '+' || s[i] == '-') && zz == 0) { /* line 14 slow_hit_count: 402, fast_hit_count: 6 */
+      int ll = work(l, i - 1); /* line 15 slow_hit_count: 10, fast_hit_count: 2 */
+      int rr = work(i + 1, r); /* line 16 slow_hit_count: 10, fast_hit_count: 2 */
+      if (ll == 4 || rr == 4 || (s[i] == '-' && rr == 3)) /* line 17 slow_hit_count: 10, fast_hit_count: 2 */
+        return 4; /* line 18 slow_hit_count: 0, fast_hit_count: 0 */
+      else /* line 19 slow_hit_count: 0, fast_hit_count: 0 */
+        return 3; /* line 20 slow_hit_count: 10, fast_hit_count: 2 */
+    } /* line 21 slow_hit_count: 0, fast_hit_count: 0 */
+  } /* line 22 slow_hit_count: 0, fast_hit_count: 0 */
+  zz = 0; /* line 23 slow_hit_count: 31, fast_hit_count: 4 */
+  for (i = r; i > l; i--) { /* line 24 slow_hit_count: 285, fast_hit_count: 6 */
+    if (s[i] == '(') /* line 25 slow_hit_count: 260, fast_hit_count: 2 */
+      zz++; /* line 26 slow_hit_count: 4, fast_hit_count: 0 */
+    else if (s[i] == ')') /* line 27 slow_hit_count: 256, fast_hit_count: 2 */
+      zz--; /* line 28 slow_hit_count: 8, fast_hit_count: 0 */
+    else if ((s[i] == '*' || s[i] == '/') && zz == 0) { /* line 29 slow_hit_count: 248, fast_hit_count: 2 */
+      int ll = work(l, i - 1); /* line 30 slow_hit_count: 6, fast_hit_count: 0 */
+      int rr = work(i + 1, r); /* line 31 slow_hit_count: 6, fast_hit_count: 0 */
+      if (ll == 4 || rr == 4 || ll == 3 || rr == 3 || (s[i] == '/' && rr == 2)) /* line 32 slow_hit_count: 6, fast_hit_count: 0 */
+        return 4; /* line 33 slow_hit_count: 0, fast_hit_count: 0 */
+      else /* line 34 slow_hit_count: 0, fast_hit_count: 0 */
+        return 2; /* line 35 slow_hit_count: 6, fast_hit_count: 0 */
+    } /* line 36 slow_hit_count: 0, fast_hit_count: 0 */
+  } /* line 37 slow_hit_count: 0, fast_hit_count: 0 */
+  if (s[l] == '(') return ((work(l + 1, r - 1) == 4) ? 4 : 1); /* line 38 slow_hit_count: 25, fast_hit_count: 4 */
+  string sa; /* line 39 slow_hit_count: 42, fast_hit_count: 8 */
+  sa = ""; /* line 40 slow_hit_count: 21, fast_hit_count: 4 */
+  for (i = l; i <= r; i++) sa = sa + s[i]; /* line 41 slow_hit_count: 169, fast_hit_count: 10 */
+  if (ma[sa] == 0) { /* line 42 slow_hit_count: 21, fast_hit_count: 4 */
+    ma[sa] = 1; /* line 43 slow_hit_count: 8, fast_hit_count: 3 */
+    return (1); /* line 44 slow_hit_count: 8, fast_hit_count: 3 */
+  } else /* line 45 slow_hit_count: 0, fast_hit_count: 0 */
+    return ma[sa]; /* line 46 slow_hit_count: 13, fast_hit_count: 1 */
+} /* line 47 slow_hit_count: 0, fast_hit_count: 0 */
+int main() { /* line 48 slow_hit_count: 1, fast_hit_count: 1 */
+  cin >> n; /* line 49 slow_hit_count: 1, fast_hit_count: 1 */
+  int i, j; /* line 50 slow_hit_count: 0, fast_hit_count: 0 */
+  gets(ss); /* line 51 slow_hit_count: 1, fast_hit_count: 1 */
+  for (i = 1; i <= n; i++) { /* line 52 slow_hit_count: 5, fast_hit_count: 2 */
+    string sa = s = ""; /* line 53 slow_hit_count: 4, fast_hit_count: 1 */
+    cin >> sa; /* line 54 slow_hit_count: 4, fast_hit_count: 1 */
+    if (sa.length() != 7) cin >> sa; /* line 55 slow_hit_count: 4, fast_hit_count: 1 */
+    cin >> sa; /* line 56 slow_hit_count: 4, fast_hit_count: 1 */
+    gets(ss); /* line 57 slow_hit_count: 4, fast_hit_count: 1 */
+    for (j = 0; ss[j]; j++) /* line 58 slow_hit_count: 87, fast_hit_count: 5 */
+      if (ss[j] != ' ') s = s + ss[j]; /* line 59 slow_hit_count: 83, fast_hit_count: 4 */
+    ma[sa] = work(0, s.length() - 1); /* line 60 slow_hit_count: 4, fast_hit_count: 1 */
+  } /* line 61 slow_hit_count: 0, fast_hit_count: 0 */
+  s = ""; /* line 62 slow_hit_count: 1, fast_hit_count: 1 */
+  gets(ss); /* line 63 slow_hit_count: 1, fast_hit_count: 1 */
+  for (i = 0; ss[i]; i++) /* line 64 slow_hit_count: 100, fast_hit_count: 6 */
+    if (ss[i] != ' ') s = s + ss[i]; /* line 65 slow_hit_count: 99, fast_hit_count: 5 */
+  if (work(0, s.length() - 1) != 4) /* line 66 slow_hit_count: 1, fast_hit_count: 1 */
+    printf("OK\n"); /* line 67 slow_hit_count: 1, fast_hit_count: 1 */
+  else /* line 68 slow_hit_count: 0, fast_hit_count: 0 */
+    printf("Suspicious\n"); /* line 69 slow_hit_count: 0, fast_hit_count: 0 */
+} /* line 70 slow_hit_count: 1, fast_hit_count: 1 */
+
+
+assistant: To analyze the performance of the provided C program, we need to identify why the program exhibits slow execution for the given "slow" input compared to the "fast" input. Here's a detailed breakdown of both phases requested:
+
+### Phase 1: Identify Expensive or Inefficient Code Segments
+
+1. **Compare Line-Level Hit Counts:**
+   - The function `work()` is prominently hit more times for the slow input compared to the fast input, indicating that this recursive function is a key area of focus.
+   - Specifically, lines 9, 14, 29, and 41 show significantly higher hit counts in the slow input case. This suggests that these parts of the code are executed repeatedly and might contribute to the slowdown.
+
+2. **Pinpoint Expensive Lines or Functions:**
+   - The `for` loops (lines 9 and 24) and conditions that recursively call `work()` (lines 15, 16, 30, 31) are repeatedly executed, which increases the computational load.
+   - The string operations on line 41 also contribute to inefficiency, as creating substrings and appending characters in a loop can be costly, especially when executed frequently.
+
+3. **Inference on Interaction with Data Structures/Loops:**
+   - The recursive nature of `work()` likely leads to exponential complexity, especially when deeply nested expressions are present, which occurs more frequently with the slow input.
+   - The recursion explores all possible operator placements, creating a large recursive tree that is more expensive to evaluate for complex expressions.
+
+### Phase 2: Derive Performance-Characterizing Invariants
+
+1. **Generate Natural Language Invariants:**
+
+   **Invariant 1:**
+   - **Description:** "When the input expression is deeply nested or complex, resulting in recursive parsing with high branching, the performance degrades due to increased computational depth."
+   - **Explanation:** Complex expressions with many nested operations and operators lead to higher recursion depth and increased hit counts in the recursive function.
+
+   **Invariant 2:**
+   - **Description:** "If the macros are defined with complex expressions that include operations like multiplication or division without sufficient parentheses, parsing may require extensive recursive calls, slowing down the execution."
+   - **Explanation:** The need to evaluate and parse through nested and unbracketed operations recursively increases execution time as seen in the slow input.
+
+   **Invariant 3:**
+   - **Description:** "Expressions with many macro replacements or those forming long sequences of operations are likely to slow down execution due to extensive iterative substitution and parsing."
+   - **Explanation:** Each macro replacement adds layers of complexity, requiring more extensive substitution and evaluation.
+
+2. **Suggest Thresholds and Conditions:**
+   - Complex expressions in macros, especially those that expand into long arithmetic operations, trigger performance issues.
+   - Depth of recursion can be influenced by the number of operations and the presence of nested expressions, particularly when the expressions form a large computational tree.
+
+To summarize, the performance bottlenecks in the code arise from how deeply nested or complex the macro expressions are, leading to recursive evaluation patterns that increase the computational workload significantly. By focusing on these expressions and their structure, we can better predict and understand the conditions under which such slowdowns occur.
+
+user: (A) Context
+
+You have already:
+1. Identified expensive code segments (Phase 1).
+2. Derived performance-characterizing invariants in natural language (Phase 2).
+
+Now, you MUST transform these invariants into runtime checks and integrate them into the given C++ program.
+
+(B) Tasks: Revisit the performance-characteristic invariants you inferred in natural langauge and write faithful, error-free C++ code snippets to implement them
+
+You MUST do perform this task in two phases and provide separate answers for both: First, translating the invariants into checker code in C++ (phase 3, below). Second, integrating those checker C++ code snippets with the original program for which you inferred those invariants (phase 4, below).   
+
+Phase 3: Implement the natural language invariants inferred previously, in C++. In this phase you are asked to, 
+1. For each natural language invariant from Phase 2, you MUST produce C++ code that checks the condition at runtime.
+2. You MUST NOT relax or trivialize the checker code implementing these performance-characterizing invariants. You MUST faithfully implement them as described. 
+3. Use the following template for writing checker code in C++ which could also be implemented as a helper function:
+```cpp
+    if (/* condition based on the NL invariant */) {
+        cerr << "Warning: Performance bottleneck condition triggered!" << endl;
+        abort();
+    }
+``` 
+
+Note that not all performance-characterizing invariants are about maximising input size. You may refer to the following examples for inspiration --- some maximising the input size, some not --- but do not simply replicate them exactly. Rather, use them as inspiration to infer and tailor performance-characterizing invariants tailored for the C++ code and problem statement you were asked to analize:
+
+Example Invariant #1:
+
+A potential slowdown arises when certain arrays or lists grow large, causing repeated operations. One way to detect this is to check if the size of a critical array arr (used in a nested loop) exceeds a broad threshold.
+
+Natural language description: “If arr is very large and used in nested loops, the code may repeat operations too many times.”
+
+Code implementing the natural language description:
+
+```cpp
+// Sample checker function
+void check_size_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: size_invariant triggered - array too large for nested loops" << endl;
+        abort();
+    }
+}
+
+// Usage in main or function
+int arrSize = arr.size();
+check_size_invariant(arrSize > 50000);
+```
+
+Example Invariant #2:
+
+Repeated sorting or searching on a data structure can degrade performance, especially if the data structure is large or if the sorting is called multiple times in a loop.
+
+Natural language description: “If a large portion of the code’s execution time is spent in sorting a data structure repeatedly, performance may degrade. Check if the data structure is frequently resorted or reprocessed when it has many elements.”
+
+Code implementing the natural language description:
+
+```cpp
+void check_sort_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: sort_invariant triggered - repeatedly sorting large data" << endl;
+        abort();
+    }
+}
+
+// After reading input or before sorting
+int elementCount = someDataStructure.size();
+check_sort_invariant(elementCount > 100000 && /* some condition indicating repeated sorts */);
+```
+
+Example Invariant #3:
+
+Recursion (e.g., graph traversal or the iterative version of it, recurssive dynamic programming, recurssive computation like computing the next Fibonacci number, etc.) can become expensive if it explores a large search space. A sign of this might be a high branching factor combined with a deep recursion depth.
+
+Natural language description: “If the recursion depth is likely to exceed a certain level or if many branches are processed at each recursive call, the computation may become very expensive.”
+
+```cpp
+void check_dfs_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: dfs_invariant triggered - high recursion depth or branching factor" << endl;
+        abort();
+    }
+}
+
+// Before calling dfs or inside setup
+check_dfs_invariant((maxDepthEstimate > 50) && (branchFactorEstimate > 10));
+```
+
+Example Invariant #4:
+
+Memory usage spikes or large matrix operations can slow down computation if array dimensions become too large. If the program initializes a 2D array based on input dimensions n and m, certain input combinations can trigger large memory footprints or nested loops over the entire matrix.
+
+Natural language description: “If n and m together exceed a threshold that implies large matrix computations, the program may slow significantly.”
+
+```cpp
+void check_matrix_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: matrix_invariant triggered - potentially large matrix operations" << endl;
+        abort();
+    }
+}
+
+// After reading n, m
+check_matrix_invariant(n * m > 1000000);
+```
+
+Example invariant #5:
+
+If a program runs an expensive function or heavy-weight code (e.g. memory allocation) repeatedly within a performance-critical loop or function, the overhead for calling that function can accumulate, slowing the program significantly.
+
+Natural langauge description: "If function foo is an expensive function to execute, and is called a large number of times in a loop or recursive function, the program may slow down significantly"
+
+```cpp
+void check_expensive_function_invariant(bool condition) {
+    if (condition) {
+        cerr << "Warning: expensive function invariant triggered - excessive calls" << endl;
+        abort();
+    }
+}
+
+check_expensive_function_invariant(n > 1000000);  // arbitrary, but large threshold
+for (i = 0; i < n; ++i) { 
+    foo(); // expensive function
+}
+```
+
+
+Phase 4: Propagate and insert conditional checks. In this phase you are asked to,
+1. Place each check at an effective point in the control/data flow (e.g., after reading inputs, before heavy loops) so you do not add overhead in tight loops. Note that the checker code could also be implemented as a helper function.
+2. If multiple checks overlap, merge or adjust them carefully to avoid redundant warnings.
+3. Provide the final, instrumented C++ code in code fences. Ensure it compiles cleanly and runs without errors.
+4. For each inserted check, add a short comment explaining which bottleneck it detects.
+
+Note the following important considerations when translating the inferred performance-characterizing invariants into code and propagating the checkers to the most efective program point by instrumenting the original code: 
+1. Avoid hardcoding. Don’t rely solely on the exact values from the provided slow input; think in terms of categories or thresholds that lead to slow execution.
+2. In addition to the warning message, remember to insert an "abort()" statement at the end of the checker.
+3. Focus on fuzzer utility. The checks should help a fuzzer detect slow performance triggers by hitting these conditions.
+
+As a refresher, below you are provided with the same program statement and C++ code for which you already inferred performance-characterizing invariants:
+
+Problem statement:
+Most C/C++ programmers know about excellent opportunities that preprocessor #define directives give; but many know as well about the problems that can arise because of their careless use.
+
+In this problem we consider the following model of #define constructions (also called macros). Each macro has its name and value. The generic syntax for declaring a macro is the following:
+
+#define macro_name macro_value
+
+After the macro has been declared, "macro_name" is replaced with "macro_value" each time it is met in the program (only the whole tokens can be replaced; i.e. "macro_name" is replaced only when it is surrounded by spaces or other non-alphabetic symbol). A "macro_value" within our model can only be an arithmetic expression consisting of variables, four arithmetic operations, brackets, and also the names of previously declared macros (in this case replacement is performed sequentially). The process of replacing macros with their values is called substitution.
+
+One of the main problems arising while using macros — the situation when as a result of substitution we get an arithmetic expression with the changed order of calculation because of different priorities of the operations.
+
+Let's consider the following example. Say, we declared such a #define construction:
+
+#define sum x + y
+
+and further in the program the expression "2 * sum" is calculated. After macro substitution is performed we get "2 * x + y", instead of intuitively expected "2 * (x + y)".
+
+Let's call the situation "suspicious", if after the macro substitution the order of calculation changes, falling outside the bounds of some macro. Thus, your task is to find out by the given set of #define definitions and the given expression if this expression is suspicious or not.
+
+Let's speak more formally. We should perform an ordinary macros substitution in the given expression. Moreover, we should perform a "safe" macros substitution in the expression, putting in brackets each macro value; after this, guided by arithmetic rules of brackets expansion, we can omit some of the brackets. If there exist a way to get an expression, absolutely coinciding with the expression that is the result of an ordinary substitution (character-by-character, but ignoring spaces), then this expression and the macros system are called correct, otherwise — suspicious.
+
+Note that we consider the "/" operation as the usual mathematical division, not the integer division like in C/C++. That's why, for example, in the expression "a*(b/c)" we can omit brackets to get the expression "a*b/c".
+
+Input
+
+The first line contains the only number n (0 ≤ n ≤ 100) — the amount of #define constructions in the given program.
+
+Then there follow n lines, each of them contains just one #define construction. Each construction has the following syntax:
+
+#define name expression
+
+where
+
+  * name — the macro name, 
+  * expression — the expression with which the given macro will be replaced. An expression is a non-empty string, containing digits,names of variables, names of previously declared macros, round brackets and operational signs +-*/. It is guaranteed that the expression (before and after macros substitution) is a correct arithmetic expression, having no unary operations. The expression contains only non-negative integers, not exceeding 109. 
+
+
+
+All the names (#define constructions' names and names of their arguments) are strings of case-sensitive Latin characters. It is guaranteed that the name of any variable is different from any #define construction.
+
+Then, the last line contains an expression that you are to check. This expression is non-empty and satisfies the same limitations as the expressions in #define constructions.
+
+The input lines may contain any number of spaces anywhere, providing these spaces do not break the word "define" or the names of constructions and variables. In particular, there can be any number of spaces before and after the "#" symbol.
+
+The length of any line from the input file does not exceed 100 characters.
+
+Output
+
+Output "OK", if the expression is correct according to the above given criterion, otherwise output "Suspicious".
+
+Examples
+
+Input
+
+1
+#define sum x + y
+1 * sum
+
+
+Output
+
+Suspicious
+
+
+Input
+
+1
+#define sum  (x + y)
+sum - sum
+
+
+Output
+
+OK
+
+
+Input
+
+4
+#define sum  x + y
+#define mul  a * b
+#define div  a / b
+#define expr sum + mul * div * mul
+expr
+
+
+Output
+
+OK
+
+
+Input
+
+3
+#define SumSafe   (a+b)
+#define DivUnsafe  a/b
+#define DenominatorUnsafe  a*b
+((SumSafe) + DivUnsafe/DivUnsafe + x/DenominatorUnsafe)
+
+
+Output
+
+Suspicious
+
+Solution (C++ code):
+{solution}
+
+
+assistant: ### Phase 3: Implement Natural Language Invariants in C++
+
+Here, I'll implement the natural language invariants as runtime checks in C++. 
+
+#### Invariant 1:
+- **Description:** "When the input expression is deeply nested or complex, resulting in recursive parsing with high branching, the performance degrades due to increased computational depth."
+
+```cpp
+void check_recursion_depth_invariant(int currentDepth, int maxAllowedDepth) {
+    if (currentDepth > maxAllowedDepth) {
+        cerr << "Warning: Performance bottleneck condition triggered due to high recursion depth!" << endl;
+        abort();
+    }
+}
+```
+
+#### Invariant 2:
+- **Description:** "If the macros are defined with complex expressions that include operations like multiplication or division without sufficient parentheses, parsing may require extensive recursive calls, slowing down the execution."
+
+```cpp
+void check_complex_macro_invariant(bool complexMacroCondition) {
+    if (complexMacroCondition) {
+        cerr << "Warning: Performance bottleneck condition triggered due to complex macro expressions!" << endl;
+        abort();
+    }
+}
+```
+
+#### Invariant 3:
+- **Description:** "Expressions with many macro replacements or those forming long sequences of operations are likely to slow down execution due to extensive iterative substitution and parsing."
+
+```cpp
+void check_macro_expansion_invariant(int macroCount, int threshold) {
+    if (macroCount > threshold) {
+        cerr << "Warning: Performance bottleneck condition triggered due to excessive macro expansions!" << endl;
+        abort();
+    }
+}
+```
+
+### Phase 4: Integrate Checks into the Original C++ Program
+
+Now, I'll integrate these checks into the original C++ program at strategic points.
+
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+map<string, int> ma;
+int n;
+string s;
+char ss[100000];
+
+// Checkers based on the invariants
+void check_recursion_depth_invariant(int currentDepth, int maxAllowedDepth) {
+    if (currentDepth > maxAllowedDepth) {
+        cerr << "Warning: Performance bottleneck condition triggered due to high recursion depth!" << endl;
+        abort();
+    }
+}
+
+void check_complex_macro_invariant(bool complexMacroCondition) {
+    if (complexMacroCondition) {
+        cerr << "Warning: Performance bottleneck condition triggered due to complex macro expressions!" << endl;
+        abort();
+    }
+}
+
+void check_macro_expansion_invariant(int macroCount, int threshold) {
+    if (macroCount > threshold) {
+        cerr << "Warning: Performance bottleneck condition triggered due to excessive macro expansions!" << endl;
+        abort();
+    }
+}
+
+int work(int l, int r, int currentDepth) {
+    check_recursion_depth_invariant(currentDepth, 50); // Example: max depth allowed is 50
+
+    int i, zz = 0;
+    for (i = r; i > l; i--) {
+        if (s[i] == '(')
+            zz++;
+        else if (s[i] == ')')
+            zz--;
+        else if ((s[i] == '+' || s[i] == '-') && zz == 0) {
+            int ll = work(l, i - 1, currentDepth + 1);
+            int rr = work(i + 1, r, currentDepth + 1);
+            if (ll == 4 || rr == 4 || (s[i] == '-' && rr == 3))
+                return 4;
+            else
+                return 3;
+        }
+    }
+
+    zz = 0;
+    for (i = r; i > l; i--) {
+        if (s[i] == '(')
+            zz++;
+        else if (s[i] == ')')
+            zz--;
+        else if ((s[i] == '*' || s[i] == '/') && zz == 0) {
+            int ll = work(l, i - 1, currentDepth + 1);
+            int rr = work(i + 1, r, currentDepth + 1);
+            if (ll == 4 || rr == 4 || ll == 3 || rr == 3 || (s[i] == '/' && rr == 2))
+                return 4;
+            else
+                return 2;
+        }
+    }
+    if (s[l] == '(') return ((work(l + 1, r - 1, currentDepth + 1) == 4) ? 4 : 1);
+    
+    string sa;
+    sa = "";
+    for (i = l; i <= r; i++) sa = sa + s[i];
+
+    // Check complex macro condition (e.g., unbracketed operations)
+    check_complex_macro_invariant(sa.find('*') != string::npos || sa.find('/') != string::npos);
+
+    if (ma[sa] == 0) {
+        ma[sa] = 1;
+        return (1);
+    } else
+        return ma[sa];
+}
+
+int main() {
+    cin >> n;
+    int i, j;
+    gets(ss);
+
+    // Check macro expansion invariant before processing
+    check_macro_expansion_invariant(n, 100); // Example: threshold is 100 macros
+
+    for (i = 1; i <= n; i++) {
+        string sa = s = "";
+        cin >> sa;
+        if (sa.length() != 7) cin >> sa;
+        cin >> sa;
+        gets(ss);
+        for (j = 0; ss[j]; j++)
+            if (ss[j] != ' ') s = s + ss[j];
+        ma[sa] = work(0, s.length() - 1, 0); // Start with zero recursion depth
+    }
+
+    s = "";
+    gets(ss);
+    for (i = 0; ss[i]; i++)
+        if (ss[i] != ' ') s = s + ss[i];
+
+    if (work(0, s.length() - 1, 0) != 4)
+        printf("OK\n");
+    else
+        printf("Suspicious\n");
+}
+```
+
+### Explanation:
+- **Checkers**: Implemented as helper functions to encapsulate conditions for potential bottlenecks.
+- **Placement**: 
+  - Depth check is performed within the `work` function to ensure recursion depth is monitored.
+  - Complex macro conditions are checked when evaluating each expression.
+  - Macro expansion check is performed once, before processing macros in `main`.
+- **Thresholds**: Set examples for thresholds to demonstrate how checks can be adapted. Adjust the values based on realistic expectations or further analysis.
+
