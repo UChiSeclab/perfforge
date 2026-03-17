@@ -1,0 +1,42 @@
+#include <bits/stdc++.h>
+using namespace std;
+int col[1000][1000] = {{
+    0,
+}};
+int n1 = 0;
+int n2 = 0;
+int N, M;
+void go(queue<pair<int, int> > &q, int u, int v, int x, int y) {
+  if (x >= 0 && y >= 0 && x < N && y < M && col[x][y] == 0) {
+    q.push(make_pair(x, y));
+    col[x][y] = 3 - col[u][v];
+    if (col[x][y] == 1)
+      ++n1;
+    else
+      ++n2;
+  }
+}
+int main() {
+  cin >> N >> M;
+  int x, y;
+  int ans = 0;
+  for (int _n = N, ii = 0; ii < _n; ++ii)
+    for (int _n = M, jj = 0; jj < _n; ++jj) {
+      if (col[ii][jj]) continue;
+      col[ii][jj] = 1;
+      n1 = 1;
+      n2 = 0;
+      queue<pair<int, int> > q;
+      q.push(make_pair(ii, jj));
+      while (!q.empty()) {
+        int u = q.front().first;
+        int v = q.front().second;
+        q.pop();
+        for (int x = (max(u - 2, 0)), _b = (min(u + 2, N - 1)); x <= _b; ++x)
+          for (int y = (max(v - 2, 0)), _b = (min(v + 2, M - 1)); y <= _b; ++y)
+            if ((x - u) * (x - u) + (y - v) * (y - v) == 5) go(q, u, v, x, y);
+      }
+      ans += max(n1, n2);
+    }
+  cout << ans << endl;
+}
